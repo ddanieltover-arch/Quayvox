@@ -1,0 +1,165 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 48% 4%;
+    --foreground: 230 67% 97%;
+    --card: 222 38% 8%;
+    --card-foreground: 230 67% 97%;
+    --popover: 222 38% 8%;
+    --popover-foreground: 230 67% 97%;
+    --primary: 227 89% 64%;
+    --primary-foreground: 230 67% 97%;
+    --secondary: 222 30% 12%;
+    --secondary-foreground: 230 67% 97%;
+    --muted: 222 30% 12%;
+    --muted-foreground: 222 20% 72%;
+    --accent: 227 89% 64%;
+    --accent-foreground: 230 67% 97%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 230 67% 97% / 0.08;
+    --input: 222 30% 15%;
+    --ring: 227 89% 64%;
+    --radius: 0.875rem;
+    
+    --color-bg-primary: #070A12;
+    --color-bg-secondary: #0B1020;
+    --color-accent: #4F6DF5;
+    --color-text-primary: #F4F6FF;
+    --color-text-secondary: #A7B1C8;
+    --color-surface: #11182B;
+    --color-success: #27C26A;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-[#070A12] text-[#F4F6FF] antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Sora', sans-serif;
+    letter-spacing: -0.02em;
+    line-height: 0.95;
+  }
+  
+  .font-mono {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+}
+
+@layer components {
+  .text-gradient {
+    background: linear-gradient(135deg, #F4F6FF 0%, #4F6DF5 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .card-surface {
+    background: #11182B;
+    border: 1px solid rgba(244, 246, 255, 0.08);
+    border-radius: 28px;
+  }
+  
+  .btn-primary {
+    @apply px-6 py-3 rounded-[14px] font-medium transition-all duration-300;
+    background: #4F6DF5;
+    color: #F4F6FF;
+    box-shadow: 0 10px 30px rgba(79, 109, 245, 0.18);
+  }
+  
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 40px rgba(79, 109, 245, 0.28);
+  }
+  
+  .btn-secondary {
+    @apply px-6 py-3 rounded-[14px] font-medium transition-all duration-300;
+    background: transparent;
+    color: #F4F6FF;
+    border: 1px solid rgba(244, 246, 255, 0.15);
+  }
+  
+  .btn-secondary:hover {
+    background: rgba(244, 246, 255, 0.05);
+    border-color: rgba(244, 246, 255, 0.25);
+  }
+  
+  .eyebrow {
+    @apply font-mono text-xs uppercase tracking-[0.14em] text-[#4F6DF5];
+  }
+  
+  .dot-grid {
+    background-image: radial-gradient(circle, rgba(244, 246, 255, 0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  
+  .accent-line {
+    width: 2px;
+    background: #4F6DF5;
+  }
+  
+  .glass-card {
+    background: rgba(17, 24, 43, 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(244, 246, 255, 0.08);
+    border-radius: 28px;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .animation-delay-100 {
+    animation-delay: 100ms;
+  }
+  
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  
+  .animation-delay-300 {
+    animation-delay: 300ms;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #070A12;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1a2340;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3460;
+}
+
+/* Selection */
+::selection {
+  background: rgba(79, 109, 245, 0.3);
+  color: #F4F6FF;
+}
