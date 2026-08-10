@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react';
 import PageHero from '@/components/PageHero';
 import PageCta from '@/components/PageCta';
 import BranchLocations from '@/components/BranchLocations';
+import { images } from '@/assets/images';
 
 const values = [
   {
@@ -26,7 +27,7 @@ const About = () => (
       eyebrow="ABOUT"
       title="A global shipping company."
       description="Quayvox moves freight worldwide with local branches on every continent — and one visibility layer for every shipment."
-      image="/images/visibility_aerial.jpg"
+      image={images.visibilityAerial}
       imageAlt="Aerial view of global logistics corridors"
     >
       <Link to="/contact" className="btn-primary inline-flex items-center gap-2 min-h-11">
@@ -62,7 +63,7 @@ const About = () => (
 
     <section className="relative w-full min-h-[36vh] lg:min-h-[44vh] overflow-hidden">
       <img
-        src="/images/ops_center_bg.jpg"
+        src={images.opsCenterBg}
         alt="Control tower operations"
         className="absolute inset-0 w-full h-full object-cover"
       />

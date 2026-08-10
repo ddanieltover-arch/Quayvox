@@ -4,6 +4,7 @@ import PageHero from '@/components/PageHero';
 import Network from '@/sections/Network';
 import Operations from '@/sections/Operations';
 import { solutions, getSolutionPath } from '@/data/solutions';
+import { images } from '@/assets/images';
 
 const Solutions = () => (
   <>
@@ -11,7 +12,7 @@ const Solutions = () => (
       eyebrow="SOLUTIONS"
       title="Built for how freight actually moves."
       description="Whether you run ocean lanes, air express, or multi-modal networks — Quayvox adapts to your modes and industries."
-      image="/images/global_cargo_plane.jpg"
+      image={images.globalCargoPlane}
       imageAlt="Global air cargo network"
     >
       <Link to="/contact" className="btn-primary inline-flex items-center gap-2 min-h-11">

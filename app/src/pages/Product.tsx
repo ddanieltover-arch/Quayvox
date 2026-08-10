@@ -6,6 +6,7 @@ import Features from '@/sections/Features';
 import Visibility from '@/sections/Visibility';
 import Optimization from '@/sections/Optimization';
 import Dashboard from '@/sections/Dashboard';
+import { images } from '@/assets/images';
 
 const Product = () => (
   <>
@@ -13,7 +14,7 @@ const Product = () => (
       eyebrow="PRODUCT"
       title="One logistics OS for every shipment."
       description="Track containers, optimize routes, and keep customs paperwork in sync — across carriers, countries, and modes."
-      image="/images/dashboard_ui.jpg"
+      image={images.dashboardUi}
       imageAlt="Quayvox operations dashboard"
     >
       <Link to="/contact" className="btn-primary inline-flex items-center gap-2 min-h-11">

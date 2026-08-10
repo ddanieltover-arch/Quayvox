@@ -15,6 +15,7 @@ import PageHero from '@/components/PageHero';
 import PageCta from '@/components/PageCta';
 import { BRANCHES } from '@/lib/contact';
 import { getSolutionPath } from '@/data/solutions';
+import { images } from '@/assets/images';
 
 const modes = [
   {
@@ -122,7 +123,7 @@ const Coverage = () => (
       eyebrow="COVERAGE"
       title="Every continent. One network."
       description="Branches in the USA, UK, Japan, Australia, Russia, Egypt, and Mexico — air, ocean, rail, and road under one Quayvox network."
-      image="/images/global_cargo_plane.jpg"
+      image={images.globalCargoPlane}
       imageAlt="Global Quayvox cargo network"
     >
       <div className="flex flex-wrap gap-3">
@@ -231,7 +232,7 @@ const Coverage = () => (
 
     <section className="relative w-full min-h-[36vh] lg:min-h-[44vh] overflow-hidden">
       <img
-        src="/images/visibility_aerial.jpg"
+        src={images.visibilityAerial}
         alt="Global logistics corridors"
         className="absolute inset-0 w-full h-full object-cover"
       />

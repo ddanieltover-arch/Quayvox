@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { GitCompare, Zap, ArrowRight, Fuel, Clock, Leaf } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { images } from '@/assets/images';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -156,7 +157,7 @@ const Optimization = () => {
         className="relative lg:absolute left-[4vw] lg:left-[42vw] top-[4vh] lg:top-[10vh] w-[92vw] lg:w-[54vw] h-auto lg:h-[80vh] rounded-3xl overflow-hidden shadow-card mx-auto lg:mx-0 mt-8 lg:mt-0"
       >
         <img
-          src="/images/route_highway.jpg"
+          src={images.routeHighway}
           alt="Route Optimization"
           className="w-full h-64 lg:h-full object-cover"
         />

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Search, MapPin, Clock, Bell } from 'lucide-react';
 import PageHero from '@/components/PageHero';
 import PageCta from '@/components/PageCta';
+import { images } from '@/assets/images';
 
 const steps = [
   {
@@ -44,7 +45,7 @@ const Track = () => {
         eyebrow="TRACK"
         title="Find any shipment in seconds."
         description="Enter a tracking number to see live status, ETA, and the full event timeline."
-        image="/images/feature_tracking.jpg"
+        image={images.featureTracking}
         imageAlt="Shipment tracking visibility"
       >
         <form onSubmit={handleTrack} className="max-w-xl">

@@ -7,6 +7,7 @@ import {
   Factory,
   type LucideIcon,
 } from 'lucide-react';
+import { images } from '@/assets/images';
 
 export interface SolutionCapability {
   title: string;
@@ -46,7 +47,7 @@ export const solutions: SolutionPage[] = [
     heroTitle: 'Container visibility from gate-in to discharge.',
     heroDescription:
       'Unify vessel schedules, port events, and container milestones so planners stop chasing carrier portals and start acting on one trusted ocean timeline.',
-    image: '/images/visibility_aerial.jpg',
+    image: images.visibilityAerial,
     imageAlt: 'Aerial view of ocean freight corridors',
     overview: [
       'Ocean freight still runs on fragmented carrier notices, terminal updates, and spreadsheet ETAs. Quayvox collapses that noise into a single shipment timeline your ops team can trust.',
@@ -111,7 +112,7 @@ export const solutions: SolutionPage[] = [
     heroTitle: 'AWB status and hub handoffs you can trust.',
     heroDescription:
       'Give time-critical freight the visibility it deserves — AWB events, hub transfers, and ETA confidence in one ops-ready view.',
-    image: '/images/global_cargo_plane.jpg',
+    image: images.globalCargoPlane,
     imageAlt: 'Global air cargo network',
     overview: [
       'Air cargo moves fast, but visibility often lags. Quayvox keeps AWB status, hub handoffs, and recovery options visible so ops can protect SLAs on the clock.',
@@ -172,7 +173,7 @@ export const solutions: SolutionPage[] = [
     heroTitle: 'Dispatch visibility before the customer calls.',
     heroDescription:
       'Track linehaul and last-mile legs with exception alerts that reach ops first — so delivery promises stay intact.',
-    image: '/images/route_highway.jpg',
+    image: images.routeHighway,
     imageAlt: 'Highway freight and last-mile corridors',
     overview: [
       'Road and last mile are where customer experience is won or lost. Quayvox gives dispatch and customer teams the same live picture of status, ETA, and exceptions.',
@@ -233,7 +234,7 @@ export const solutions: SolutionPage[] = [
     heroTitle: 'Promise dates backed by live carrier truth.',
     heroDescription:
       'Keep store and digital teams aligned with SKU-level visibility, carrier data across regions, and customer track pages that reduce WISMO load.',
-    image: '/images/feature_tracking.jpg',
+    image: images.featureTracking,
     imageAlt: 'Retail shipment tracking visibility',
     overview: [
       'Retail and e-commerce live on promise dates. Quayvox backs those promises with live multi-carrier data so merchandising, fulfillment, and CX share one version of the truth.',
@@ -294,7 +295,7 @@ export const solutions: SolutionPage[] = [
     heroTitle: 'Temperature-aware freight with audit-ready records.',
     heroDescription:
       'Run pharma and cold-chain lanes with exception urgency, documentation discipline, and timelines built for regulated cargo.',
-    image: '/images/feature_compliance.jpg',
+    image: images.featureCompliance,
     imageAlt: 'Compliance and cold-chain documentation',
     overview: [
       'Pharma and cold chain cannot treat delays like ordinary freight. Quayvox prioritizes temperature-sensitive workflows, documentation readiness, and fast exception escalation.',
@@ -355,7 +356,7 @@ export const solutions: SolutionPage[] = [
     heroTitle: 'Inbound parts and outbound goods on one tower.',
     heroDescription:
       'Synchronize supplier inbound, plant transfers, and finished-goods outbound so production and distribution share the same logistics truth.',
-    image: '/images/ops_center_bg.jpg',
+    image: images.opsCenterBg,
     imageAlt: 'Manufacturing logistics control tower',
     overview: [
       'Manufacturing supply chains break when inbound parts and outbound finished goods live in separate systems. Quayvox gives planners one control tower across both.',

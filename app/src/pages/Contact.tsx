@@ -2,6 +2,7 @@ import PageHero from '@/components/PageHero';
 import PageCta from '@/components/PageCta';
 import ContactForm from '@/components/ContactForm';
 import ContactDetailsCard from '@/components/ContactDetailsCard';
+import { images } from '@/assets/images';
 
 const Contact = () => (
   <>
@@ -9,7 +10,7 @@ const Contact = () => (
       eyebrow="CONTACT"
       title="Talk to the Quayvox team."
       description="A global shipping company with branches on every continent. Tell us about your lanes — we’ll follow up."
-      image="/images/ops_center_bg.jpg"
+      image={images.opsCenterBg}
       imageAlt="Logistics operations center"
     />
 

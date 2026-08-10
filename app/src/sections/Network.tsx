@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Globe, Wallet, ArrowRight, Plane, Ship, Train, Truck } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { images } from '@/assets/images';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -111,9 +112,9 @@ const Network = () => {
         className="relative lg:absolute left-[4vw] top-[10vh] w-[92vw] lg:w-[54vw] h-[50vh] lg:h-[80vh] rounded-3xl overflow-hidden shadow-card mx-auto lg:mx-0"
       >
         <img
-          src="/images/global_cargo_plane.jpg"
-          alt="Global Network"
-          className="w-full h-full object-cover"
+          src={images.globalCargoPlane}
+          alt="Cargo aircraft loading on the tarmac"
+          className="absolute inset-0 w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-navy-900/70 via-navy-900/30 to-transparent" />
 

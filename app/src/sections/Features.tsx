@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Radar, Route, FileCheck } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { images } from '@/assets/images';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -10,19 +11,19 @@ const features = [
     icon: Radar,
     title: 'Real-time tracking',
     description: 'GPS, AIS, and carrier updates unified into a single timeline.',
-    image: '/images/feature_tracking.jpg',
+    image: images.featureTracking,
   },
   {
     icon: Route,
     title: 'Route optimization',
     description: 'ML-powered suggestions that cut fuel, time, and emissions.',
-    image: '/images/feature_optimization.jpg',
+    image: images.featureOptimization,
   },
   {
     icon: FileCheck,
     title: 'Customs & docs',
     description: 'Auto-generated paperwork, duties, and audit trails.',
-    image: '/images/feature_compliance.jpg',
+    image: images.featureCompliance,
   },
 ];
 

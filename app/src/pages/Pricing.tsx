@@ -5,6 +5,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import PageHero from '@/components/PageHero';
 import PageCta from '@/components/PageCta';
+import { images } from '@/assets/images';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -103,7 +104,7 @@ const Pricing = () => {
         eyebrow="PRICING"
         title="Simple plans for every stage."
         description="Start with a short evaluation, then scale into Pro or Enterprise as your network grows."
-        image="/images/feature_optimization.jpg"
+        image={images.featureOptimization}
         imageAlt="Route optimization overview"
       >
         <Link to="/contact" className="btn-primary inline-flex items-center gap-2 min-h-11">

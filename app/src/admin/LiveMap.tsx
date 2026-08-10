@@ -149,6 +149,28 @@ const LiveMap = () => {
         });
       }
 
+      // Weather cells / advisory zones
+      if (activeLayers.includes('Weather')) {
+        const zones: { lat: number; lng: number; r: number; color: string }[] = [
+          { lat: 35, lng: -150, r: 48, color: 'rgba(56, 189, 248, 0.18)' },
+          { lat: 22, lng: 118, r: 36, color: 'rgba(251, 191, 36, 0.2)' },
+          { lat: 48, lng: -30, r: 42, color: 'rgba(56, 189, 248, 0.12)' },
+          { lat: 12, lng: 65, r: 30, color: 'rgba(52, 211, 153, 0.14)' },
+        ];
+        zones.forEach((zone, idx) => {
+          const [x, y] = latLngToCanvas(zone.lat, zone.lng, w, h);
+          const pulse = 1 + Math.sin(time * 0.002 + idx) * 0.08;
+          ctx.beginPath();
+          ctx.arc(x, y, zone.r * pulse * zoom, 0, Math.PI * 2);
+          ctx.fillStyle = zone.color;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, (zone.r * 0.35) * zoom, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(125, 211, 252, 0.45)';
+          ctx.fill();
+        });
+      }
+
       animationFrame = requestAnimationFrame(animate);
     };
 

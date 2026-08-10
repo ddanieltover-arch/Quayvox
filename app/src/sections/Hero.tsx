@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, MessageCircle, Search, Package, MapPin, Truck } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { images } from '@/assets/images';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -109,7 +110,7 @@ const Hero = () => {
           className="relative w-full lg:absolute lg:left-[4vw] lg:top-[10vh] lg:w-[54vw] h-[42vh] sm:h-[48vh] lg:h-[80vh] rounded-2xl lg:rounded-3xl overflow-hidden shadow-card mb-8 lg:mb-0"
         >
           <img
-            src="/images/hero_map.jpg"
+            src={images.heroMap}
             alt="Global Logistics Network"
             className="w-full h-full object-cover"
           />

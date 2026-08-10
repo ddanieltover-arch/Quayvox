@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import PageHero from '@/components/PageHero';
 import LegalDoc, { LegalSection } from '@/components/LegalDoc';
+import { images } from '@/assets/images';
 
 const Privacy = () => (
   <>
@@ -8,7 +9,7 @@ const Privacy = () => (
       eyebrow="LEGAL"
       title="Privacy policy"
       description="How Quayvox handles information you share with us. Replace with counsel-approved text before production launch."
-      image="/images/feature_compliance.jpg"
+      image={images.featureCompliance}
       imageAlt="Compliance and data protection"
     />
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, BookOpen, Headphones, Clock, Shield } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { images } from '@/assets/images';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -80,7 +81,7 @@ const Operations = () => {
     >
       <div ref={bgRef} className="absolute inset-0">
         <img
-          src="/images/ops_center_bg.jpg"
+          src={images.opsCenterBg}
           alt="Operations Center"
           className="w-full h-full object-cover"
         />

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import PageHero from '@/components/PageHero';
 import LegalDoc, { LegalSection } from '@/components/LegalDoc';
+import { images } from '@/assets/images';
 
 const Terms = () => (
   <>
@@ -8,7 +9,7 @@ const Terms = () => (
       eyebrow="LEGAL"
       title="Terms of use"
       description="Terms governing use of the Quayvox website and product. Replace with counsel-approved terms before production launch."
-      image="/images/feature_compliance.jpg"
+      image={images.featureCompliance}
       imageAlt="Service terms and compliance"
     />
 
