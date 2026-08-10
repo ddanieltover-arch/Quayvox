@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { Users, UserPlus, Shield, Clock, Pencil, Trash2 } from 'lucide-react';
 
 const mockTeam = [
-  { id: '1', name: 'Alex Johnson', email: 'alex@shiptrack.io', role: 'Admin', department: 'Operations', status: 'Active', lastActive: '2 min ago', avatar: 'AJ' },
-  { id: '2', name: 'Sarah Chen', email: 'sarah@shiptrack.io', role: 'Manager', department: 'Logistics', status: 'Active', lastActive: '15 min ago', avatar: 'SC' },
-  { id: '3', name: 'Mike Peters', email: 'mike@shiptrack.io', role: 'Analyst', department: 'Finance', status: 'Away', lastActive: '2 hours ago', avatar: 'MP' },
-  { id: '4', name: 'Emily Davis', email: 'emily@shiptrack.io', role: 'Operator', department: 'Customer Support', status: 'Active', lastActive: '5 min ago', avatar: 'ED' },
-  { id: '5', name: 'Carlos Ruiz', email: 'carlos@shiptrack.io', role: 'Manager', department: 'Operations', status: 'Offline', lastActive: '1 day ago', avatar: 'CR' },
-  { id: '6', name: 'Lisa Wang', email: 'lisa@shiptrack.io', role: 'Analyst', department: 'Logistics', status: 'Active', lastActive: '30 min ago', avatar: 'LW' },
+  { id: '1', name: 'Alex Johnson', email: 'alex@quayvox.com', role: 'Admin', department: 'Operations', status: 'Active', lastActive: '2 min ago', avatar: 'AJ' },
+  { id: '2', name: 'Sarah Chen', email: 'sarah@quayvox.com', role: 'Manager', department: 'Logistics', status: 'Active', lastActive: '15 min ago', avatar: 'SC' },
+  { id: '3', name: 'Mike Peters', email: 'mike@quayvox.com', role: 'Analyst', department: 'Finance', status: 'Away', lastActive: '2 hours ago', avatar: 'MP' },
+  { id: '4', name: 'Emily Davis', email: 'emily@quayvox.com', role: 'Operator', department: 'Customer Support', status: 'Active', lastActive: '5 min ago', avatar: 'ED' },
+  { id: '5', name: 'Carlos Ruiz', email: 'carlos@quayvox.com', role: 'Manager', department: 'Operations', status: 'Offline', lastActive: '1 day ago', avatar: 'CR' },
+  { id: '6', name: 'Lisa Wang', email: 'lisa@quayvox.com', role: 'Analyst', department: 'Logistics', status: 'Active', lastActive: '30 min ago', avatar: 'LW' },
 ];
 
 const activityLog = [

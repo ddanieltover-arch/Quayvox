@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Globe, Wallet, ArrowRight, Plane, Ship, Train, Truck } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -160,7 +161,7 @@ const Network = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-text-secondary">Connected</p>
-                      <p className="text-sm font-mono text-cobalt">120+ Countries</p>
+                      <p className="text-sm font-mono text-cobalt">7 Branches</p>
                     </div>
                   </div>
                 ))}
@@ -176,10 +177,11 @@ const Network = () => {
       >
         <span className="eyebrow mb-4 block">NETWORK</span>
         <h2 className="font-display font-bold text-[clamp(28px,3vw,44px)] text-text-primary leading-tight mb-6">
-          Every lane. One contract.
+          Every continent. One network.
         </h2>
         <p className="text-base text-text-secondary leading-relaxed mb-8">
-          Air, ocean, rail, and road—pre-negotiated rates and unified invoicing.
+          Branches in the USA, UK, Japan, Australia, Russia, Egypt, and Mexico — air, ocean, rail,
+          and road under one Quayvox network.
         </p>
 
         {/* Feature Bullets */}
@@ -191,7 +193,7 @@ const Network = () => {
             <div>
               <h4 className="font-mono text-xs text-cobalt mb-1">COVERAGE</h4>
               <p className="text-sm text-text-secondary">
-                120+ countries with local compliance built in.
+                Local branches on every continent with compliance built in.
               </p>
             </div>
           </div>
@@ -209,10 +211,10 @@ const Network = () => {
           </div>
         </div>
 
-        <button className="btn-primary flex items-center gap-2">
+        <Link to="/coverage" className="btn-primary inline-flex items-center gap-2 min-h-11">
           <span>View coverage</span>
           <ArrowRight className="w-4 h-4" />
-        </button>
+        </Link>
       </div>
     </section>
   );

@@ -1,9 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ShipTrack Pro - Global Logistics</title>
+    <title>Quayvox - Global Logistics</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('quayvox-theme');
+          document.documentElement.classList.remove('light', 'dark');
+          document.documentElement.classList.add(t === 'light' ? 'light' : 'dark');
+          document.documentElement.style.colorScheme = t === 'light' ? 'light' : 'dark';
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

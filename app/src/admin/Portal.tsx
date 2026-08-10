@@ -15,7 +15,7 @@ const Portal = () => {
   const [logoUrl, setLogoUrl] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const trackingUrl = `https://track.shiptrack.io/${companyName.toLowerCase().replace(/\s/g, '-')}`;
+  const trackingUrl = `https://www.quayvox.com/track/${companyName.toLowerCase().replace(/\s/g, '-')}`;
 
   const copyUrl = () => {
     navigator.clipboard.writeText(trackingUrl);

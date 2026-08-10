@@ -38,20 +38,20 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Custom colors for shipping website
+        // Custom colors for shipping website (theme-aware via CSS vars)
         navy: {
-          900: '#070A12',
-          800: '#0B1020',
-          700: '#11182B',
-          600: '#1a2340',
+          900: 'rgb(var(--navy-900) / <alpha-value>)',
+          800: 'rgb(var(--navy-800) / <alpha-value>)',
+          700: 'rgb(var(--navy-700) / <alpha-value>)',
+          600: 'rgb(var(--navy-600) / <alpha-value>)',
         },
         cobalt: {
           DEFAULT: '#4F6DF5',
           light: '#6B85F7',
           dark: '#3A55D9',
         },
-        'text-primary': '#F4F6FF',
-        'text-secondary': '#A7B1C8',
+        'text-primary': 'rgb(var(--text-primary) / <alpha-value>)',
+        'text-secondary': 'rgb(var(--text-secondary) / <alpha-value>)',
         success: '#27C26A',
       },
       fontFamily: {

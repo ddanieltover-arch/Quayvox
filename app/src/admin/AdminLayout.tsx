@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Ship,
@@ -18,8 +18,12 @@ import {
   Menu,
   X,
   ShipIcon,
+  LogOut,
 } from 'lucide-react';
 import { useShipments } from '@/context/ShipmentContext';
+import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
+import ThemeToggle from '@/components/ThemeToggle';
 import NotificationPanel from '@/components/notifications/NotificationPanel';
 
 const navItems = [
@@ -42,9 +46,18 @@ const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { unreadCount, theme, toggleTheme } = useShipments();
+  const { unreadCount } = useShipments();
+  const { theme } = useTheme();
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const isDark = theme === 'dark';
+  const initials = (user?.email?.[0] || 'A').toUpperCase();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className={`min-h-screen ${isDark ? 'bg-navy-900' : 'bg-gray-50'}`}>
@@ -68,7 +81,7 @@ const AdminLayout = () => {
               <ShipIcon className="w-4 h-4 text-white" />
             </div>
             <span className={`font-display font-bold ${isDark ? 'text-text-primary' : 'text-gray-900'}`}>
-              ShipTrack<span className="text-cobalt">Pro</span>
+              Quay<span className="text-cobalt">vox</span>
             </span>
           </NavLink>
           <button
@@ -135,16 +148,7 @@ const AdminLayout = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Theme Toggle */}
-            <button
-              onClick={toggleTheme}
-              className={`p-2 rounded-lg transition-colors ${
-                isDark ? 'hover:bg-white/5 text-text-secondary' : 'hover:bg-gray-100 text-gray-500'
-              }`}
-              title="Toggle theme"
-            >
-              {isDark ? '☀️' : '🌙'}
-            </button>
+            <ThemeToggle className="rounded-lg border-0" />
 
             {/* Notifications */}
             <button
@@ -161,10 +165,26 @@ const AdminLayout = () => {
               )}
             </button>
 
-            {/* User Avatar */}
-            <div className="w-8 h-8 rounded-full bg-cobalt/20 flex items-center justify-center border border-cobalt/30">
-              <span className="text-xs font-semibold text-cobalt">A</span>
+            <div className="hidden sm:flex flex-col items-end mr-1 max-w-[140px]">
+              <span className={`text-xs truncate ${isDark ? 'text-text-secondary' : 'text-gray-600'}`}>
+                {user?.email}
+              </span>
             </div>
+
+            <div className="w-8 h-8 rounded-full bg-cobalt/20 flex items-center justify-center border border-cobalt/30">
+              <span className="text-xs font-semibold text-cobalt">{initials}</span>
+            </div>
+
+            <button
+              onClick={handleSignOut}
+              className={`p-2 rounded-lg transition-colors ${
+                isDark ? 'hover:bg-white/5 text-text-secondary' : 'hover:bg-gray-100 text-gray-500'
+              }`}
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </header>
 

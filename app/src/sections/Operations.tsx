@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { ArrowRight, BookOpen, Headphones, Clock, Shield } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -19,7 +20,6 @@ const Operations = () => {
 
   useEffect(() => {
     const ctx = gsap.context(() => {
-      // Background parallax
       gsap.fromTo(
         bgRef.current,
         { scale: 1.06, y: 0 },
@@ -35,7 +35,6 @@ const Operations = () => {
         }
       );
 
-      // Headline words stagger
       const words = headlineRef.current?.querySelectorAll('span');
       if (words) {
         gsap.fromTo(
@@ -55,7 +54,6 @@ const Operations = () => {
         );
       }
 
-      // Right content
       gsap.fromTo(
         contentRef.current,
         { x: '6vw', opacity: 0 },
@@ -78,71 +76,73 @@ const Operations = () => {
   return (
     <section
       ref={sectionRef}
-      className="relative w-full h-screen min-h-[600px] overflow-hidden"
+      className="relative w-full min-h-[640px] lg:min-h-screen overflow-hidden"
     >
-      {/* Full-bleed Background */}
       <div ref={bgRef} className="absolute inset-0">
         <img
           src="/images/ops_center_bg.jpg"
           alt="Operations Center"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-navy-900/72" />
+        {/* Fixed dark scrims — not theme tokens (navy-* flips to light gray in light mode) */}
+        <div className="absolute inset-0 bg-[#070A12]/88" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#070A12] via-[#070A12]/85 to-[#070A12]/75" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#070A12] via-transparent to-[#070A12]/45" />
       </div>
 
-      {/* Content */}
-      <div className="relative h-full flex items-center">
-        <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-20">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
-            {/* Left Headline */}
+      <div className="relative flex items-center min-h-[640px] lg:min-h-screen">
+        <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-16 lg:py-20">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center">
             <div>
               <h2
                 ref={headlineRef}
-                className="font-display font-bold text-[clamp(36px,5vw,64px)] text-text-primary leading-[1.05]"
+                className="font-display font-bold text-[clamp(36px,5vw,64px)] text-white leading-[1.05] drop-shadow-[0_2px_16px_rgba(0,0,0,0.55)]"
               >
                 <span className="inline-block">Built</span>{' '}
                 <span className="inline-block">for</span>{' '}
                 <span className="inline-block">teams</span>
                 <br />
                 <span className="inline-block">that</span>{' '}
-                <span className="inline-block">don't</span>{' '}
-                <span className="inline-block text-cobalt">sleep.</span>
+                <span className="inline-block">don&apos;t</span>{' '}
+                <span className="inline-block text-[#6B85F7]">sleep.</span>
               </h2>
             </div>
 
-            {/* Right Content */}
-            <div ref={contentRef} className="lg:pl-12">
-              <p className="text-lg text-text-secondary leading-relaxed mb-8">
-                24/7 monitoring, SLA alerts, and on-call routing—so your ops team
-                stays ahead.
+            <div
+              ref={contentRef}
+              className="rounded-2xl border border-white/20 bg-[#0B1020]/95 backdrop-blur-md p-5 sm:p-7 shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+            >
+              <p className="text-base sm:text-lg text-white/90 leading-relaxed mb-6">
+                24/7 monitoring, SLA alerts, and on-call routing—so your ops team stays ahead.
               </p>
 
-              {/* SLA Features */}
-              <div className="flex flex-wrap gap-4 mb-8">
+              <div className="flex flex-wrap gap-3 mb-7">
                 {slaFeatures.map((feature) => (
                   <div
                     key={feature.label}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-navy-900/60 border border-white/10"
+                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#11182B] border border-white/20"
                   >
-                    <feature.icon className="w-4 h-4 text-cobalt" />
+                    <feature.icon className="w-4 h-4 text-[#6B85F7] shrink-0" />
                     <div>
-                      <p className="text-xs font-mono text-text-primary">{feature.label}</p>
-                      <p className="text-[10px] text-text-secondary">{feature.desc}</p>
+                      <p className="text-xs font-mono text-white">{feature.label}</p>
+                      <p className="text-[10px] text-white/70">{feature.desc}</p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* CTAs */}
-              <div className="flex flex-wrap items-center gap-4">
-                <button className="btn-primary flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <Link to="/product" className="btn-primary flex items-center gap-2 min-h-11">
                   <span>Meet the platform</span>
                   <ArrowRight className="w-4 h-4" />
-                </button>
-                <button className="btn-secondary flex items-center gap-2">
+                </Link>
+                <Link
+                  to="/about"
+                  className="inline-flex items-center gap-2 min-h-11 px-4 rounded-[14px] border border-white/30 bg-white/10 text-white text-sm font-medium hover:bg-white/15 transition-colors"
+                >
                   <BookOpen className="w-4 h-4" />
-                  <span>Read the docs</span>
-                </button>
+                  <span>About Quayvox</span>
+                </Link>
               </div>
             </div>
           </div>

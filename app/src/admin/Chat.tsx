@@ -24,7 +24,7 @@ const botResponses: Record<string, string> = {
 
 const Chat = () => {
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'bot', content: 'Hello! I\'m ShipTrack AI Assistant. How can I help you today?', timestamp: new Date() },
+    { id: '1', role: 'bot', content: 'Hello! I\'m Quayvox AI Assistant. How can I help you today?', timestamp: new Date() },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);

@@ -56,7 +56,7 @@ const Mobile = () => {
 
               {/* App Content */}
               <div className="p-4">
-                <h4 className="text-lg font-display font-bold text-text-primary mb-4">ShipTrack</h4>
+                <h4 className="text-lg font-display font-bold text-text-primary mb-4">Quayvox</h4>
 
                 {activeScreen === 'dashboard' && (
                   <div className="space-y-3">

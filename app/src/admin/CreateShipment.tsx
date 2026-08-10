@@ -26,8 +26,8 @@ const CreateShipment = () => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = () => {
-    addShipment({
+  const handleSubmit = async () => {
+    const created = await addShipment({
       origin: form.origin,
       destination: form.destination,
       carrier: form.carrier,
@@ -44,7 +44,7 @@ const CreateShipment = () => {
       documents: [],
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
     });
-    navigate('/admin/shipments');
+    if (created) navigate('/admin/shipments');
   };
 
   const modeIcons = { Air: Plane, Ocean: Ship, Rail: Train, Road: Truck };
@@ -262,7 +262,7 @@ const CreateShipment = () => {
             <ArrowRight className="w-4 h-4" />
           </button>
         ) : (
-          <button onClick={handleSubmit} className="btn-primary flex items-center gap-2">
+          <button onClick={() => void handleSubmit()} className="btn-primary flex items-center gap-2">
             <Check className="w-4 h-4" />
             Create Shipment
           </button>

@@ -5,7 +5,54 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  :root,
+  html.light {
+    --background: 220 33% 96%;
+    --foreground: 222 47% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 8%;
+    --primary: 227 89% 64%;
+    --primary-foreground: 230 67% 97%;
+    --secondary: 220 28% 92%;
+    --secondary-foreground: 222 47% 8%;
+    --muted: 220 28% 92%;
+    --muted-foreground: 220 14% 38%;
+    --accent: 227 89% 64%;
+    --accent-foreground: 230 67% 97%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 222 30% 12% / 0.1;
+    --input: 220 24% 90%;
+    --ring: 227 89% 64%;
+    --radius: 0.875rem;
+
+    --navy-900: 240 243 249;
+    --navy-800: 230 235 245;
+    --navy-700: 255 255 255;
+    --navy-600: 216 224 238;
+    --text-primary: 11 18 32;
+    --text-secondary: 74 85 104;
+    --color-bg-primary: #F0F3F9;
+    --color-bg-secondary: #E6EBF5;
+    --color-accent: #4F6DF5;
+    --color-text-primary: #0B1220;
+    --color-text-secondary: #4A5568;
+    --color-surface: #FFFFFF;
+    --color-success: #27C26A;
+    --border-subtle: rgba(11, 18, 32, 0.08);
+    --border-medium: rgba(11, 18, 32, 0.14);
+    --surface-hover: rgba(11, 18, 32, 0.05);
+    --scrollbar-track: #E6EBF5;
+    --scrollbar-thumb: #B8C3D9;
+    --scrollbar-thumb-hover: #9AABC8;
+    --dot-grid: rgba(11, 18, 32, 0.08);
+    --glass-bg: rgba(255, 255, 255, 0.85);
+    --selection-fg: #0B1220;
+  }
+
+  html.dark {
     --background: 222 48% 4%;
     --foreground: 230 67% 97%;
     --card: 222 38% 8%;
@@ -26,7 +73,13 @@
     --input: 222 30% 15%;
     --ring: 227 89% 64%;
     --radius: 0.875rem;
-    
+
+    --navy-900: 7 10 18;
+    --navy-800: 11 16 32;
+    --navy-700: 17 24 43;
+    --navy-600: 26 35 64;
+    --text-primary: 244 246 255;
+    --text-secondary: 167 177 200;
     --color-bg-primary: #070A12;
     --color-bg-secondary: #0B1020;
     --color-accent: #4F6DF5;
@@ -34,6 +87,15 @@
     --color-text-secondary: #A7B1C8;
     --color-surface: #11182B;
     --color-success: #27C26A;
+    --border-subtle: rgba(244, 246, 255, 0.08);
+    --border-medium: rgba(244, 246, 255, 0.15);
+    --surface-hover: rgba(244, 246, 255, 0.05);
+    --scrollbar-track: #070A12;
+    --scrollbar-thumb: #1a2340;
+    --scrollbar-thumb-hover: #2a3460;
+    --dot-grid: rgba(244, 246, 255, 0.08);
+    --glass-bg: rgba(17, 24, 43, 0.8);
+    --selection-fg: #F4F6FF;
   }
 }
 
@@ -41,22 +103,25 @@
   * {
     @apply border-border;
   }
-  
+
   html {
     scroll-behavior: smooth;
   }
-  
+
   body {
-    @apply bg-[#070A12] text-[#F4F6FF] antialiased;
+    @apply antialiased;
+    background-color: rgb(var(--navy-900));
+    color: rgb(var(--text-primary));
     font-family: 'Inter', sans-serif;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
-  
+
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Sora', sans-serif;
     letter-spacing: -0.02em;
     line-height: 0.95;
   }
-  
+
   .font-mono {
     font-family: 'IBM Plex Mono', monospace;
   }
@@ -64,60 +129,60 @@
 
 @layer components {
   .text-gradient {
-    background: linear-gradient(135deg, #F4F6FF 0%, #4F6DF5 100%);
+    background: linear-gradient(135deg, rgb(var(--text-primary)) 0%, #4F6DF5 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-  
+
   .card-surface {
-    background: #11182B;
-    border: 1px solid rgba(244, 246, 255, 0.08);
+    background: rgb(var(--navy-700));
+    border: 1px solid var(--border-subtle);
     border-radius: 28px;
   }
-  
+
   .btn-primary {
     @apply px-6 py-3 rounded-[14px] font-medium transition-all duration-300;
     background: #4F6DF5;
     color: #F4F6FF;
     box-shadow: 0 10px 30px rgba(79, 109, 245, 0.18);
   }
-  
+
   .btn-primary:hover {
     transform: translateY(-2px);
     box-shadow: 0 14px 40px rgba(79, 109, 245, 0.28);
   }
-  
+
   .btn-secondary {
     @apply px-6 py-3 rounded-[14px] font-medium transition-all duration-300;
     background: transparent;
-    color: #F4F6FF;
-    border: 1px solid rgba(244, 246, 255, 0.15);
+    color: rgb(var(--text-primary));
+    border: 1px solid var(--border-medium);
   }
-  
+
   .btn-secondary:hover {
-    background: rgba(244, 246, 255, 0.05);
-    border-color: rgba(244, 246, 255, 0.25);
+    background: var(--surface-hover);
+    border-color: var(--border-medium);
   }
-  
+
   .eyebrow {
     @apply font-mono text-xs uppercase tracking-[0.14em] text-[#4F6DF5];
   }
-  
+
   .dot-grid {
-    background-image: radial-gradient(circle, rgba(244, 246, 255, 0.08) 1px, transparent 1px);
+    background-image: radial-gradient(circle, var(--dot-grid) 1px, transparent 1px);
     background-size: 24px 24px;
   }
-  
+
   .accent-line {
     width: 2px;
     background: #4F6DF5;
   }
-  
+
   .glass-card {
-    background: rgba(17, 24, 43, 0.8);
+    background: var(--glass-bg);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(244, 246, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     border-radius: 28px;
   }
 }
@@ -126,18 +191,44 @@
   .text-balance {
     text-wrap: balance;
   }
-  
+
   .animation-delay-100 {
     animation-delay: 100ms;
   }
-  
+
   .animation-delay-200 {
     animation-delay: 200ms;
   }
-  
+
   .animation-delay-300 {
     animation-delay: 300ms;
   }
+}
+
+/* Remap white-opacity utilities for light mode */
+html.light .border-white\/5,
+html.light .border-white\/10,
+html.light .border-white\/15,
+html.light .border-white\/20 {
+  border-color: var(--border-subtle);
+}
+
+html.light .bg-white\/5 {
+  background-color: var(--surface-hover);
+}
+
+html.light .hover\:bg-white\/5:hover,
+html.light .hover\:bg-white\/10:hover {
+  background-color: var(--surface-hover);
+}
+
+html.light .hover\:border-white\/20:hover,
+html.light .hover\:border-white\/25:hover {
+  border-color: var(--border-medium);
+}
+
+html.light .bg-black\/50 {
+  background-color: rgba(11, 18, 32, 0.4);
 }
 
 /* Custom scrollbar */
@@ -146,20 +237,20 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #070A12;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1a2340;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a3460;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Selection */
 ::selection {
   background: rgba(79, 109, 245, 0.3);
-  color: #F4F6FF;
+  color: var(--selection-fg);
 }

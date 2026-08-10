@@ -1,0 +1,12 @@
+{
+  "name": "quayvox-root",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Quayvox — Vercel API + SPA monorepo root",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "@vercel/node": "^5.1.14",
+    "resend": "^4.1.2",
+    "zod": "^3.24.2"
+  }
+}

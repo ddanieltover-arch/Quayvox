@@ -20,6 +20,8 @@ export interface Shipment {
   updatedAt: string;
   documents: string[];
   tags: string[];
+  customerEmail?: string | null;
+  notes?: string | null;
 }
 
 export const generateMockShipments = (): Shipment[] => [
