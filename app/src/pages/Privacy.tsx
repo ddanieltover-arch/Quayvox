@@ -41,8 +41,8 @@ const Privacy = () => (
 
       <LegalSection index={4} title="Processors">
         <p>
-          We use infrastructure providers such as hosting (e.g. Vercel), database and auth (e.g.
-          Supabase), and email delivery (e.g. Resend) under their respective data processing terms.
+          We use infrastructure providers such as hosting (e.g. Vercel), database (e.g. Neon
+          Postgres), and email delivery (e.g. Resend) under their respective data processing terms.
         </p>
       </LegalSection>
 

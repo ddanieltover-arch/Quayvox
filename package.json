@@ -4,9 +4,17 @@
   "version": "0.1.0",
   "description": "Quayvox — Vercel API + SPA monorepo root",
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.1",
+    "@neondatabase/serverless": "^0.10.4",
     "@vercel/node": "^5.1.14",
+    "bcryptjs": "^2.4.3",
     "resend": "^4.1.2",
     "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "pg": "^8.23.0"
+  },
+  "scripts": {
+    "db:migrate": "node scripts/apply-neon-migrations.mjs"
   }
 }

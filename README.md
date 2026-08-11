@@ -4,7 +4,7 @@ Production logistics marketing site + admin dashboard.
 
 **Site:** [www.quayvox.com](https://www.quayvox.com) · **Contact:** info@quayvox.com
 
-**Stack:** Vite 7 · React 19 · Tailwind · Supabase Auth/Postgres · Resend · Vercel
+**Stack:** Vite 7 · React 19 · Tailwind · Neon Postgres · Vercel serverless · Resend
 
 ---
 
@@ -13,37 +13,50 @@ Production logistics marketing site + admin dashboard.
 ```bash
 # Root (API deps for Vercel functions)
 npm install
-
-# App
-cd app
 cp .env.example .env
-# Fill VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+# Fill DATABASE_URL, AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD_HASH, Resend vars
+
+# Apply schema in Neon SQL Editor (or psql):
+#   neon/migrations/001_init.sql
+#   neon/migrations/002_seed_shipments.sql
+
+# Generate password hash:
+node -e "require('bcryptjs').hash('YOUR_PASSWORD',10).then(console.log)"
+
+# API (port 3000) — required for auth, track, contact, shipments
+npx vercel dev
+
+# App (separate terminal)
+cd app
 npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`.
-
-> Contact/notify APIs (`/api/*`) need Vercel or `vercel dev` from the repo root with server env vars set.
+Open `http://localhost:5173`. Vite proxies `/api/*` to `vercel dev` on port 3000.
 
 ---
 
-## Supabase setup
+## Neon setup
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. In **SQL Editor**, run in order:
-   - [`supabase/migrations/20260810000001_init_schema.sql`](supabase/migrations/20260810000001_init_schema.sql)
-   - [`supabase/migrations/20260810000002_seed_shipments.sql`](supabase/migrations/20260810000002_seed_shipments.sql)
-3. **Authentication → Users → Add user** (email + password). Disable public signup in Auth settings.
-4. Promote the user to admin:
+1. Create a project at [neon.tech](https://neon.tech) and copy the connection string into `DATABASE_URL`.
+2. In the Neon **SQL Editor**, run in order:
+   - [`neon/migrations/001_init.sql`](neon/migrations/001_init.sql)
+   - [`neon/migrations/002_seed_shipments.sql`](neon/migrations/002_seed_shipments.sql)
+3. Set admin auth in root `.env`:
 
-```sql
-update public.profiles
-set role = 'admin'
-where email = 'you@example.com';
+```bash
+# random secret
+openssl rand -hex 32
+
+# bcrypt hash of your admin password (from repo root after npm install)
+node -e "require('bcryptjs').hash('YOUR_PASSWORD',10).then(console.log)"
 ```
 
-5. Copy **Project URL** and **anon key** into `app/.env`.
+```env
+AUTH_SECRET=...
+ADMIN_EMAIL=you@example.com
+ADMIN_PASSWORD_HASH=$2a$10$...
+```
 
 Demo tracking numbers after seed: `SH-2026-7842`, `SH-2026-7843`, …
 
@@ -66,11 +79,10 @@ Demo tracking numbers after seed: `SH-2026-7842`, `SH-2026-7843`, …
 
 | Variable | Where | Notes |
 |----------|--------|--------|
-| `VITE_SUPABASE_URL` | Build + Runtime | Same as Supabase URL |
-| `VITE_SUPABASE_ANON_KEY` | Build + Runtime | Anon/public key |
-| `SUPABASE_URL` | Runtime | Same URL (API) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Runtime | Service role — **never** expose to client |
-| `SUPABASE_ANON_KEY` | Runtime | Optional; used by notify API |
+| `DATABASE_URL` | Runtime | Neon connection string |
+| `AUTH_SECRET` | Runtime | Session signing secret |
+| `ADMIN_EMAIL` | Runtime | Single admin login email |
+| `ADMIN_PASSWORD_HASH` | Runtime | bcrypt hash of admin password |
 | `RESEND_API_KEY` | Runtime | Resend secret |
 | `RESEND_FROM_EMAIL` | Runtime | e.g. `Quayvox <noreply@quayvox.com>` |
 | `CONTACT_TO_EMAIL` | Runtime | `info@quayvox.com` |
@@ -80,7 +92,7 @@ Demo tracking numbers after seed: `SH-2026-7842`, `SH-2026-7843`, …
 
 - [ ] `/` loads
 - [ ] `/admin` redirects to `/login`
-- [ ] Admin login works (role = admin)
+- [ ] Admin login works
 - [ ] Create / edit / delete shipment persists
 - [ ] `/track/SH-2026-7842` shows status + timeline
 - [ ] Contact form saves + emails (if Resend configured)
@@ -91,9 +103,9 @@ Demo tracking numbers after seed: `SH-2026-7842`, `SH-2026-7843`, …
 ## Project layout
 
 ```
-api/                 Vercel serverless (contact, notify-shipment)
+api/                 Vercel serverless (auth, shipments, track, contact, notify)
 app/                 Vite React SPA
-supabase/migrations  Schema, RLS, seed
+neon/migrations      Neon Postgres schema + seed
 docs/pems.md         Pulse engineering memory
 vercel.json          Deploy + SPA fallback
 ```
@@ -102,6 +114,7 @@ vercel.json          Deploy + SPA fallback
 
 ## Security notes
 
-- Admin routes require Supabase session + `profiles.role = 'admin'`.
-- Public tracking uses `get_shipment_by_tracking` / `get_events_by_tracking` RPCs (no list-all for anon).
-- Resend and service-role keys stay on the server only.
+- Admin routes require an HTTP-only session cookie signed with `AUTH_SECRET`.
+- Credentials are env-based (`ADMIN_EMAIL` + `ADMIN_PASSWORD_HASH`); no public signup.
+- Public tracking is `GET /api/track/:trackingNumber` (exact match only).
+- Neon `DATABASE_URL` and Resend keys stay on the server only.

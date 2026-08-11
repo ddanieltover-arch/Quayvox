@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MapPin, Package, Clock, Search } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
   mapEventRow,
   mapShipmentRow,
@@ -40,50 +39,54 @@ const TrackResult = () => {
         return;
       }
 
-      if (!isSupabaseConfigured) {
-        setError('Tracking is unavailable until Supabase is configured.');
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       setError(null);
       setNotFound(false);
 
-      const { data: shipData, error: shipError } = await supabase.rpc('get_shipment_by_tracking', {
-        p_tracking: code,
-      });
+      try {
+        const res = await fetch(`/api/track/${encodeURIComponent(code)}`);
+        const data = (await res.json()) as {
+          shipment?: ShipmentRow | null;
+          events?: ShipmentEventRow[];
+          error?: string;
+        };
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (shipError) {
-        setError(shipError.message);
-        setShipment(null);
-        setEvents([]);
+        if (res.status === 503) {
+          setError('Tracking is unavailable until the database API is running.');
+          setShipment(null);
+          setEvents([]);
+          setLoading(false);
+          return;
+        }
+
+        if (res.status === 404 || !data.shipment) {
+          setShipment(null);
+          setEvents([]);
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
+
+        if (!res.ok) {
+          setError(data.error || 'Failed to load tracking data');
+          setShipment(null);
+          setEvents([]);
+          setLoading(false);
+          return;
+        }
+
+        setShipment(mapShipmentRow(data.shipment));
+        setEvents((data.events ?? []).map(mapEventRow));
         setLoading(false);
-        return;
-      }
-
-      const rows = (shipData as ShipmentRow[] | null) ?? [];
-      if (!rows.length) {
-        setShipment(null);
-        setEvents([]);
-        setNotFound(true);
-        setLoading(false);
-        return;
-      }
-
-      const mapped = mapShipmentRow(rows[0]);
-      setShipment(mapped);
-
-      const { data: eventData } = await supabase.rpc('get_events_by_tracking', {
-        p_tracking: code,
-      });
-
-      if (!cancelled) {
-        const eventRows = (eventData as ShipmentEventRow[] | null) ?? [];
-        setEvents(eventRows.map(mapEventRow));
-        setLoading(false);
+      } catch {
+        if (!cancelled) {
+          setError('Cannot reach tracking API. Run `vercel dev` from the repo root.');
+          setShipment(null);
+          setEvents([]);
+          setLoading(false);
+        }
       }
     }
 

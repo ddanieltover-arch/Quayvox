@@ -22,9 +22,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         <div className="card-surface max-w-md p-6 text-center space-y-3">
           <h1 className="font-display font-bold text-xl text-text-primary">Configuration required</h1>
           <p className="text-sm text-text-secondary">
-            Set <code className="text-cobalt">VITE_SUPABASE_URL</code> and{' '}
-            <code className="text-cobalt">VITE_SUPABASE_ANON_KEY</code> in{' '}
-            <code className="text-cobalt">app/.env</code>, then restart the dev server.
+            Set <code className="text-cobalt">DATABASE_URL</code>,{' '}
+            <code className="text-cobalt">AUTH_SECRET</code>,{' '}
+            <code className="text-cobalt">ADMIN_EMAIL</code>, and{' '}
+            <code className="text-cobalt">ADMIN_PASSWORD_HASH</code> in the repo root{' '}
+            <code className="text-cobalt">.env</code>, then run{' '}
+            <code className="text-cobalt">vercel dev</code> (API) with Vite proxied to it.
           </p>
         </div>
       </div>
@@ -42,11 +45,8 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         <div className="card-surface max-w-md p-6 text-center space-y-3">
           <h1 className="font-display font-bold text-xl text-text-primary">Admin access required</h1>
           <p className="text-sm text-text-secondary">
-            Your account is signed in but does not have the <code className="text-cobalt">admin</code> role.
-            Ask an owner to run:{' '}
-            <code className="block mt-2 text-xs text-left bg-navy-800 p-3 rounded-lg overflow-x-auto">
-              update public.profiles set role = &apos;admin&apos; where email = &apos;you@example.com&apos;;
-            </code>
+            Sign in with the admin email configured in{' '}
+            <code className="text-cobalt">ADMIN_EMAIL</code>.
           </p>
           <a href="/" className="btn-secondary inline-flex text-sm">
             Back to home

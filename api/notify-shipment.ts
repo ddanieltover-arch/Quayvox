@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { z } from 'zod';
+import { isServerConfigured, requireAdmin } from './_lib/auth';
+import { handleOptions } from './_lib/http';
 
 const bodySchema = z.object({
   trackingNumber: z.string().trim().min(3).max(64),
@@ -12,44 +13,14 @@ const bodySchema = z.object({
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (handleOptions(req, res, 'POST, OPTIONS')) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const resendKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Quayvox <onboarding@resend.dev>';
-
-  if (!supabaseUrl || !anonKey) {
-    return res.status(500).json({ error: 'Server auth is not configured' });
+  if (!isServerConfigured()) {
+    return res.status(503).json({ error: 'Server is not configured' });
   }
 
-  const supabase = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-
-  const { data: userData, error: userError } = await supabase.auth.getUser(token);
-  if (userError || !userData.user) {
-    return res.status(401).json({ error: 'Invalid session' });
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', userData.user.id)
-    .maybeSingle();
-
-  if (profile?.role !== 'admin') {
-    return res.status(403).json({ error: 'Admin role required' });
-  }
+  if (!requireAdmin(req, res)) return;
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -57,6 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { trackingNumber, status, customerEmail, origin, destination } = parsed.data;
+  const resendKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Quayvox <onboarding@resend.dev>';
 
   if (!resendKey) {
     return res.status(200).json({ ok: true, emailSent: false, reason: 'RESEND_API_KEY missing' });

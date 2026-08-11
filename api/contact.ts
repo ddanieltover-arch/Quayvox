@@ -1,7 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { z } from 'zod';
+import { isDbConfigured } from './_lib/db';
+import { handleOptions } from './_lib/http';
+import { insertContactMessage } from './_lib/shipments';
 
 const bodySchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -26,11 +28,7 @@ function rateLimit(ip: string, limit = 8, windowMs = 60_000): boolean {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (handleOptions(req, res, 'POST, OPTIONS')) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const ip =
@@ -49,32 +47,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { name, email, company, message, website } = parsed.data;
 
-  // Honeypot: bots fill hidden field
   if (website) {
     return res.status(200).json({ ok: true });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!isDbConfigured()) {
+    return res.status(500).json({ error: 'Server database is not configured' });
+  }
+
   const resendKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'Quayvox <onboarding@resend.dev>';
   const toEmail = process.env.CONTACT_TO_EMAIL;
 
-  if (!supabaseUrl || !serviceKey) {
-    return res.status(500).json({ error: 'Server database is not configured' });
-  }
-
-  const supabase = createClient(supabaseUrl, serviceKey);
-
-  const { error: dbError } = await supabase.from('contact_messages').insert({
-    name,
-    email,
-    company: company || null,
-    message,
-  });
-
-  if (dbError) {
-    console.error('contact insert', dbError);
+  try {
+    await insertContactMessage({
+      name,
+      email,
+      company: company || null,
+      message,
+    });
+  } catch (err) {
+    console.error('contact insert', err);
     return res.status(500).json({ error: 'Failed to save message' });
   }
 
@@ -96,7 +89,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     } catch (err) {
       console.error('resend contact', err);
-      // Message is stored; still return success with warning
       return res.status(200).json({ ok: true, emailSent: false });
     }
   }

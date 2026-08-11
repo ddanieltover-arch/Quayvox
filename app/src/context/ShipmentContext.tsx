@@ -2,7 +2,6 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '@/context/AuthContext';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import {
   mapShipmentRow,
   toShipmentInsert,
@@ -48,7 +47,7 @@ interface ShipmentContextType {
 const ShipmentContext = createContext<ShipmentContextType | undefined>(undefined);
 
 export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAdmin, session } = useAuth();
+  const { isAdmin, configured, user } = useAuth();
   const [shipments, setShipments] = useState<ShipmentWithExtras[]>([]);
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -64,8 +63,8 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const refreshShipments = useCallback(async () => {
-    if (!isSupabaseConfigured || !isAdmin) {
-      if (!isSupabaseConfigured) {
+    if (!configured || !isAdmin) {
+      if (!configured) {
         setShipments(generateMockShipments());
       } else {
         setShipments([]);
@@ -74,60 +73,62 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setLoading(true);
-    const { data, error } = await supabase
-      .from('shipments')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error(error);
+    try {
+      const res = await fetch('/api/shipments', { credentials: 'include' });
+      if (!res.ok) {
+        throw new Error('Failed to load shipments');
+      }
+      const data = (await res.json()) as { shipments: ShipmentRow[] };
+      setShipments((data.shipments ?? []).map(mapShipmentRow));
+    } catch (err) {
+      console.error(err);
       toast.error('Failed to load shipments');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setShipments((data as ShipmentRow[]).map(mapShipmentRow));
-    setLoading(false);
-  }, [isAdmin]);
+  }, [configured, isAdmin]);
 
   useEffect(() => {
     void refreshShipments();
-  }, [refreshShipments, session?.access_token]);
+  }, [refreshShipments, user?.email]);
 
   const addShipment = useCallback(
     async (shipmentData: NewShipmentInput) => {
-      if (!isSupabaseConfigured || !isAdmin) {
+      if (!configured || !isAdmin) {
         toast.error('Admin session required to create shipments');
         return null;
       }
 
       const payload = toShipmentInsert(shipmentData);
-      const { data, error } = await supabase.from('shipments').insert(payload).select('*').single();
+      try {
+        const res = await fetch('/api/shipments', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = (await res.json()) as { shipment?: ShipmentRow; error?: string };
+        if (!res.ok || !data.shipment) {
+          toast.error(data.error || 'Failed to create shipment');
+          return null;
+        }
 
-      if (error || !data) {
-        toast.error(error?.message || 'Failed to create shipment');
+        const mapped = mapShipmentRow(data.shipment);
+        setShipments((prev) => [mapped, ...prev]);
+        addNotification({
+          title: 'New Shipment Created',
+          message: `Shipment ${mapped.trackingNumber} has been created.`,
+          type: 'success',
+        });
+        toast.success(`Created ${mapped.trackingNumber}`);
+        return mapped;
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to create shipment');
         return null;
       }
-
-      const mapped = mapShipmentRow(data as ShipmentRow);
-
-      await supabase.from('shipment_events').insert({
-        shipment_id: mapped.id,
-        status: mapped.status,
-        location: mapped.origin,
-        message: 'Shipment created',
-      });
-
-      setShipments((prev) => [mapped, ...prev]);
-      addNotification({
-        title: 'New Shipment Created',
-        message: `Shipment ${mapped.trackingNumber} has been created.`,
-        type: 'success',
-      });
-      toast.success(`Created ${mapped.trackingNumber}`);
-      return mapped;
     },
-    [addNotification, isAdmin]
+    [addNotification, configured, isAdmin]
   );
 
   const updateShipment = useCallback(
@@ -136,95 +137,105 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updates: Partial<ShipmentWithExtras>,
       options?: { notifyCustomer?: boolean; eventMessage?: string; eventLocation?: string }
     ) => {
-      if (!isSupabaseConfigured || !isAdmin) {
+      if (!configured || !isAdmin) {
         toast.error('Admin session required to update shipments');
         return false;
       }
 
       const existing = shipments.find((s) => s.id === id);
       const row = toShipmentUpdate(updates);
-      const { data, error } = await supabase
-        .from('shipments')
-        .update(row)
-        .eq('id', id)
-        .select('*')
-        .single();
+      const statusChanged = updates.status && existing && updates.status !== existing.status;
 
-      if (error || !data) {
-        toast.error(error?.message || 'Failed to update shipment');
+      try {
+        const res = await fetch(`/api/shipments/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...row,
+            eventMessage:
+              options?.eventMessage ||
+              (statusChanged ? `Status updated to ${updates.status}` : undefined),
+            eventLocation: options?.eventLocation,
+          }),
+        });
+        const data = (await res.json()) as { shipment?: ShipmentRow; error?: string };
+        if (!res.ok || !data.shipment) {
+          toast.error(data.error || 'Failed to update shipment');
+          return false;
+        }
+
+        const mapped = mapShipmentRow(data.shipment);
+        setShipments((prev) => prev.map((s) => (s.id === id ? mapped : s)));
+
+        if (options?.notifyCustomer && mapped.customerEmail && statusChanged) {
+          try {
+            await fetch('/api/notify-shipment', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                trackingNumber: mapped.trackingNumber,
+                status: mapped.status,
+                customerEmail: mapped.customerEmail,
+                origin: mapped.origin,
+                destination: mapped.destination,
+              }),
+            });
+          } catch (err) {
+            console.warn('Status email failed', err);
+          }
+        }
+
+        addNotification({
+          title: 'Shipment Updated',
+          message: `${mapped.trackingNumber} has been updated.`,
+          type: 'info',
+        });
+        toast.success('Shipment updated');
+        return true;
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to update shipment');
         return false;
       }
-
-      const mapped = mapShipmentRow(data as ShipmentRow);
-      setShipments((prev) => prev.map((s) => (s.id === id ? mapped : s)));
-
-      const statusChanged = updates.status && existing && updates.status !== existing.status;
-      if (statusChanged || options?.eventMessage) {
-        await supabase.from('shipment_events').insert({
-          shipment_id: id,
-          status: mapped.status,
-          location: options?.eventLocation || mapped.destination,
-          message:
-            options?.eventMessage ||
-            `Status updated to ${mapped.status}`,
-        });
-      }
-
-      if (options?.notifyCustomer && mapped.customerEmail && statusChanged) {
-        try {
-          await fetch('/api/notify-shipment', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session?.access_token ?? ''}`,
-            },
-            body: JSON.stringify({
-              trackingNumber: mapped.trackingNumber,
-              status: mapped.status,
-              customerEmail: mapped.customerEmail,
-              origin: mapped.origin,
-              destination: mapped.destination,
-            }),
-          });
-        } catch (err) {
-          console.warn('Status email failed', err);
-        }
-      }
-
-      addNotification({
-        title: 'Shipment Updated',
-        message: `${mapped.trackingNumber} has been updated.`,
-        type: 'info',
-      });
-      toast.success('Shipment updated');
-      return true;
     },
-    [addNotification, isAdmin, session?.access_token, shipments]
+    [addNotification, configured, isAdmin, shipments]
   );
 
   const deleteShipment = useCallback(
     async (id: string) => {
-      if (!isSupabaseConfigured || !isAdmin) {
+      if (!configured || !isAdmin) {
         toast.error('Admin session required to delete shipments');
         return false;
       }
 
-      const { error } = await supabase.from('shipments').delete().eq('id', id);
-      if (error) {
-        toast.error(error.message);
+      try {
+        const res = await fetch(`/api/shipments/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          const data = (await res.json()) as { error?: string };
+          toast.error(data.error || 'Failed to delete shipment');
+          return false;
+        }
+
+        setShipments((prev) => prev.filter((s) => s.id !== id));
+        addNotification({
+          title: 'Shipment Deleted',
+          message: 'Shipment has been removed.',
+          type: 'warning',
+        });
+        toast.success('Shipment deleted');
+        return true;
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to delete shipment');
         return false;
       }
-
-      setShipments((prev) => prev.filter((s) => s.id !== id));
-      addNotification({
-        title: 'Shipment Deleted',
-        message: 'Shipment has been removed.',
-        type: 'warning',
-      });
-      toast.success('Shipment deleted');
-      return true;
     },
-    [addNotification, isAdmin]
+    [addNotification, configured, isAdmin]
   );
 
   const markNotificationRead = useCallback((id: string) => {

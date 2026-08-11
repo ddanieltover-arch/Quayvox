@@ -1,12 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 export type UserRole = 'admin' | 'viewer';
 
+export type AuthUser = {
+  email: string;
+};
+
 interface AuthContextType {
-  session: Session | null;
-  user: User | null;
+  user: AuthUser | null;
   role: UserRole | null;
   isAdmin: boolean;
   loading: boolean;
@@ -18,96 +19,108 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function fetchRole(userId: string): Promise<UserRole | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (error || !data) return null;
-  return data.role as UserRole;
-}
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [configured, setConfigured] = useState(false);
 
   const refreshProfile = useCallback(async () => {
-    if (!user) {
-      setRole(null);
-      return;
-    }
-    const nextRole = await fetchRole(user.id);
-    setRole(nextRole);
-  }, [user]);
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      const data = (await res.json()) as {
+        configured?: boolean;
+        user?: AuthUser | null;
+        role?: UserRole | null;
+      };
 
-  useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setLoading(false);
-      return;
-    }
-
-    let mounted = true;
-
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!mounted) return;
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      if (data.session?.user) {
-        const nextRole = await fetchRole(data.session.user.id);
-        if (mounted) setRole(nextRole);
-      }
-      if (mounted) setLoading(false);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
-      if (nextSession?.user) {
-        const nextRole = await fetchRole(nextSession.user.id);
-        setRole(nextRole);
-      } else {
+      if (res.status === 503) {
+        setConfigured(false);
+        setUser(null);
         setRole(null);
+        return;
       }
-      setLoading(false);
-    });
 
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
+      setConfigured(data.configured !== false);
+      setUser(data.user ?? null);
+      setRole(data.role ?? null);
+    } catch {
+      // API unreachable (e.g. vite without vercel dev)
+      setConfigured(false);
+      setUser(null);
+      setRole(null);
+    }
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      await refreshProfile();
+      if (mounted) setLoading(false);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [refreshProfile]);
+
   const signIn = useCallback(async (email: string, password: string) => {
-    if (!isSupabaseConfigured) {
-      return { error: 'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' };
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        configured?: boolean;
+        user?: AuthUser;
+        role?: UserRole;
+      };
+
+      if (res.status === 503) {
+        setConfigured(false);
+        return { error: data.error || 'Auth is not configured on the server.' };
+      }
+
+      if (!res.ok) {
+        return { error: data.error || 'Sign in failed' };
+      }
+
+      setConfigured(true);
+      setUser(data.user ?? { email });
+      setRole(data.role ?? 'admin');
+      return { error: null };
+    } catch {
+      setConfigured(false);
+      return {
+        error: 'Cannot reach auth API. Run `vercel dev` from the repo root (proxied via Vite).',
+      };
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
-    return { error: null };
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // ignore network errors on logout
+    }
+    setUser(null);
     setRole(null);
   }, []);
 
   const value = useMemo(
     () => ({
-      session,
       user,
       role,
       isAdmin: role === 'admin',
       loading,
-      configured: isSupabaseConfigured,
+      configured,
       signIn,
       signOut,
       refreshProfile,
     }),
-    [session, user, role, loading, signIn, signOut, refreshProfile]
+    [user, role, loading, configured, signIn, signOut, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

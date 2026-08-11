@@ -63,14 +63,17 @@ const Login = () => {
         <div className="w-full max-w-md card-surface p-6 sm:p-8">
           <h1 className="font-display font-bold text-2xl text-text-primary mb-2">Admin sign in</h1>
           <p className="text-sm text-text-secondary mb-6">
-            Access is invite-only. Create users in the Supabase Auth dashboard, then set{' '}
-            <code className="text-cobalt">profiles.role = admin</code>.
+            Access is invite-only. Sign in with the admin credentials configured in the server{' '}
+            <code className="text-cobalt">.env</code> (
+            <code className="text-cobalt">ADMIN_EMAIL</code>).
           </p>
 
           {!configured && (
             <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              Supabase env vars are missing. Copy <code>app/.env.example</code> to{' '}
-              <code>app/.env</code> and fill in your project keys.
+              Auth API is not configured or not running. Set{' '}
+              <code>DATABASE_URL</code>, <code>AUTH_SECRET</code>, <code>ADMIN_EMAIL</code>, and{' '}
+              <code>ADMIN_PASSWORD_HASH</code> in the repo root <code>.env</code>, then start{' '}
+              <code>vercel dev</code>.
             </div>
           )}
 
