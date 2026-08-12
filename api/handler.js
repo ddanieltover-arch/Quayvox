@@ -598,6 +598,13 @@ var init_CtaButton = __esm({
 });
 
 // emails/components/ShipmentFacts.tsx
+function displayMetricValue(value) {
+  if (value == null || value === "") return "TBC";
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? "TBC" : value.toISOString().slice(0, 10);
+  }
+  return String(value);
+}
 function Metric({ label, value }) {
   return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("td", { width: "50%", valign: "top", style: { padding: "0 6px 12px" }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
     "table",
@@ -649,11 +656,14 @@ function MetricGrid({
   extra
 }) {
   const items = [
-    { label: "Mode", value: shipment.mode },
-    { label: "Carrier", value: shipment.carrier },
-    { label: "Priority", value: shipment.priority },
-    { label: "ETA", value: shipment.eta || "TBC" },
-    ...extra ?? []
+    { label: "Mode", value: displayMetricValue(shipment.mode) },
+    { label: "Carrier", value: displayMetricValue(shipment.carrier) },
+    { label: "Priority", value: displayMetricValue(shipment.priority) },
+    { label: "ETA", value: displayMetricValue(shipment.eta) },
+    ...(extra ?? []).map((item) => ({
+      label: item.label,
+      value: displayMetricValue(item.value)
+    }))
   ];
   const rows = [];
   for (let i = 0; i < items.length; i += 2) {
@@ -1634,6 +1644,14 @@ async function sendEmailSafe(options, meta) {
 }
 
 // api/_lib/shipmentNotifications.ts
+function formatEmailDate(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  const s2 = String(value).trim();
+  return s2 ? s2.slice(0, 10) : null;
+}
 function rowToShipmentEmailData(row, extras) {
   const lat = row.current_lat != null ? Number(row.current_lat) : null;
   const lng = row.current_lng != null ? Number(row.current_lng) : null;
@@ -1646,11 +1664,13 @@ function rowToShipmentEmailData(row, extras) {
     carrier: String(row.carrier),
     mode: String(row.mode),
     priority: String(row.priority),
-    eta: row.eta ?? null,
+    eta: formatEmailDate(row.eta),
     progress: Number(row.progress) || 0,
     shipper: String(row.shipper),
     consignee: String(row.consignee),
     customerEmail: row.customer_email ?? null,
+    senderEmail: row.sender_email ?? null,
+    receiverEmail: row.receiver_email ?? row.customer_email ?? null,
     currentLat: Number.isFinite(lat) ? lat : null,
     currentLng: Number.isFinite(lng) ? lng : null,
     positionLabel: extras?.positionLabel ?? null
@@ -1664,9 +1684,11 @@ function detectShipmentChanges(before, after, patch, eventMessage) {
   const prevLng = before.current_lng != null ? Number(before.current_lng) : null;
   const nextLat = after.current_lat != null ? Number(after.current_lat) : null;
   const nextLng = after.current_lng != null ? Number(after.current_lng) : null;
-  const positionChanged = (Object.prototype.hasOwnProperty.call(patch, "current_lat") || Object.prototype.hasOwnProperty.call(patch, "current_lng")) && prevLat !== nextLat && prevLng !== nextLng && nextLat != null && nextLng != null;
-  const prevEta = before.eta ?? null;
-  const nextEta = after.eta ?? null;
+  const coordsChanged = (Object.prototype.hasOwnProperty.call(patch, "current_lat") || Object.prototype.hasOwnProperty.call(patch, "current_lng")) && prevLat !== nextLat && prevLng !== nextLng && nextLat != null && nextLng != null;
+  const addressChanged = Object.prototype.hasOwnProperty.call(patch, "current_address") && String(before.current_address ?? "").trim() !== String(after.current_address ?? "").trim();
+  const positionChanged = coordsChanged || addressChanged;
+  const prevEta = formatEmailDate(before.eta);
+  const nextEta = formatEmailDate(after.eta);
   const etaChanged = Object.prototype.hasOwnProperty.call(patch, "eta") && prevEta !== nextEta;
   const timelineOnly = Boolean(eventMessage) && !statusChanged && !positionChanged && !etaChanged;
   return {
@@ -1716,15 +1738,22 @@ function buildContexts(shipment, changes, eventMessage, eventLocation) {
   }
   return contexts;
 }
-function shouldNotifyCustomer(ctx, notifyCustomer, customerEmail) {
-  if (!customerEmail) return false;
-  if (ctx.kind === "created" || ctx.kind === "location" || ctx.kind === "eta") return true;
-  if (ctx.kind === "status") {
-    if (ctx.shipment.status === "Exception") return true;
-    return notifyCustomer;
+var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function getPartyNotificationEmails(shipment) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const raw of [shipment.senderEmail, shipment.receiverEmail]) {
+    const email = raw?.trim();
+    if (!email || !EMAIL_RE.test(email)) continue;
+    const key = email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(email);
   }
-  if (ctx.kind === "timeline") return notifyCustomer;
-  return false;
+  return out;
+}
+function shouldNotifyCustomer(_ctx, _notifyCustomer, _customerEmail) {
+  return true;
 }
 function shouldNotifyAdmin(_ctx) {
   return true;
@@ -1771,7 +1800,7 @@ async function sendShipmentUpdateEmails(before, after, patch, options = {}) {
     return { customerSent: false, adminSent: false, contexts: 0 };
   }
   const result = await dispatchShipmentContexts(contexts, {
-    notifyCustomer: options.notifyCustomer ?? false
+    notifyCustomer: options.notifyCustomer ?? true
   });
   return { ...result, contexts: contexts.length };
 }
@@ -1780,17 +1809,18 @@ async function dispatchShipmentContexts(contexts, options) {
   let customerSent = false;
   let adminSent = false;
   for (const ctx of contexts) {
-    const email = ctx.shipment.customerEmail;
-    if (shouldNotifyCustomer(ctx, options.notifyCustomer, email)) {
-      const result = await sendEmailSafe(
-        {
-          to: email,
-          subject: customerShipmentSubject(ctx),
-          react: CustomerShipmentEmail({ ctx })
-        },
-        { template: `customer/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
-      );
-      if (result.emailSent) customerSent = true;
+    for (const email of getPartyNotificationEmails(ctx.shipment)) {
+      if (shouldNotifyCustomer(ctx, options.notifyCustomer, email)) {
+        const result = await sendEmailSafe(
+          {
+            to: email,
+            subject: customerShipmentSubject(ctx),
+            react: CustomerShipmentEmail({ ctx })
+          },
+          { template: `customer/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
+        );
+        if (result.emailSent) customerSent = true;
+      }
     }
     if (shouldNotifyAdmin(ctx) && admin) {
       const result = await sendEmailSafe(
@@ -1868,6 +1898,7 @@ var UPDATE_COLUMNS = /* @__PURE__ */ new Set([
   "sender_state",
   "sender_postal",
   "sender_country",
+  "sender_address",
   "receiver_name",
   "receiver_phone",
   "receiver_email",
@@ -1876,6 +1907,8 @@ var UPDATE_COLUMNS = /* @__PURE__ */ new Set([
   "receiver_state",
   "receiver_postal",
   "receiver_country",
+  "receiver_address",
+  "current_address",
   "departure_at",
   "delivery_at",
   "volume",
@@ -1990,22 +2023,24 @@ async function insertShipment(payload) {
   const senderName = asString(resolved.sender_name ?? resolved.shipper);
   const receiverName = asString(resolved.receiver_name ?? resolved.consignee);
   const receiverEmail = asNullableString(resolved.receiver_email ?? resolved.customer_email);
+  const senderAddress = asString(resolved.sender_address ?? resolved.origin);
+  const receiverAddress = asString(resolved.receiver_address ?? resolved.destination);
   const rows = await sql`
     insert into public.shipments (
       tracking_number, origin, destination, carrier, status, weight,
       dim_l, dim_w, dim_h, cost, eta, progress, mode, priority,
       shipper, consignee, documents, tags, customer_email, notes,
-      sender_name, sender_phone, sender_email, sender_street, sender_city,
-      sender_state, sender_postal, sender_country,
-      receiver_name, receiver_phone, receiver_email, receiver_street, receiver_city,
-      receiver_state, receiver_postal, receiver_country,
-      departure_at, delivery_at, volume, payment_method,
+      sender_name, sender_phone, sender_email, sender_address,
+      sender_street, sender_city, sender_state, sender_postal, sender_country,
+      receiver_name, receiver_phone, receiver_email, receiver_address,
+      receiver_street, receiver_city, receiver_state, receiver_postal, receiver_country,
+      departure_at, delivery_at, volume, payment_method, current_address,
       origin_lat, origin_lng, destination_lat, destination_lng,
       current_lat, current_lng, current_location_updated_at
     ) values (
       ${resolved.tracking_number},
-      ${resolved.origin},
-      ${resolved.destination},
+      ${senderAddress},
+      ${receiverAddress},
       ${resolved.carrier},
       ${resolved.status},
       ${resolved.weight},
@@ -2026,23 +2061,26 @@ async function insertShipment(payload) {
       ${senderName},
       ${asString(resolved.sender_phone)},
       ${asNullableString(resolved.sender_email)},
-      ${asString(resolved.sender_street)},
-      ${asString(resolved.sender_city)},
-      ${asNullableString(resolved.sender_state)},
-      ${asNullableString(resolved.sender_postal)},
-      ${asString(resolved.sender_country)},
+      ${senderAddress},
+      ${""},
+      ${""},
+      ${null},
+      ${null},
+      ${""},
       ${receiverName},
       ${asString(resolved.receiver_phone)},
       ${receiverEmail},
-      ${asString(resolved.receiver_street)},
-      ${asString(resolved.receiver_city)},
-      ${asNullableString(resolved.receiver_state)},
-      ${asNullableString(resolved.receiver_postal)},
-      ${asString(resolved.receiver_country)},
+      ${receiverAddress},
+      ${""},
+      ${""},
+      ${null},
+      ${null},
+      ${""},
       ${asNullableDate(resolved.departure_at)},
       ${asNullableDate(resolved.delivery_at)},
       ${Number(resolved.volume ?? 0)},
       ${asString(resolved.payment_method)},
+      ${asNullableString(resolved.current_address)},
       ${asNullableNumber(resolved.origin_lat)},
       ${asNullableNumber(resolved.origin_lng)},
       ${asNullableNumber(resolved.destination_lat)},
@@ -2064,18 +2102,23 @@ async function updateShipment(id, patch) {
   }
   const withGeo = resolveGeoDefaults(merged);
   const currentChanged = Object.prototype.hasOwnProperty.call(patch, "current_lat") || Object.prototype.hasOwnProperty.call(patch, "current_lng");
+  const addressChanged = Object.prototype.hasOwnProperty.call(patch, "current_address");
   if (currentChanged && asNullableNumber(withGeo.current_lat) != null && asNullableNumber(withGeo.current_lng) != null) {
+    withGeo.current_location_updated_at = (/* @__PURE__ */ new Date()).toISOString();
+  } else if (addressChanged && asNullableString(withGeo.current_address)) {
     withGeo.current_location_updated_at = (/* @__PURE__ */ new Date()).toISOString();
   }
   const senderName = asString(withGeo.sender_name ?? withGeo.shipper);
   const receiverName = asString(withGeo.receiver_name ?? withGeo.consignee);
   const receiverEmail = asNullableString(withGeo.receiver_email ?? withGeo.customer_email);
+  const senderAddress = asString(withGeo.sender_address ?? withGeo.origin);
+  const receiverAddress = asString(withGeo.receiver_address ?? withGeo.destination);
   const sql = getSql();
   const rows = await sql`
     update public.shipments set
       tracking_number = ${withGeo.tracking_number},
-      origin = ${withGeo.origin},
-      destination = ${withGeo.destination},
+      origin = ${senderAddress},
+      destination = ${receiverAddress},
       carrier = ${withGeo.carrier},
       status = ${withGeo.status},
       weight = ${withGeo.weight},
@@ -2096,23 +2139,26 @@ async function updateShipment(id, patch) {
       sender_name = ${senderName},
       sender_phone = ${asString(withGeo.sender_phone)},
       sender_email = ${asNullableString(withGeo.sender_email)},
-      sender_street = ${asString(withGeo.sender_street)},
-      sender_city = ${asString(withGeo.sender_city)},
-      sender_state = ${asNullableString(withGeo.sender_state)},
-      sender_postal = ${asNullableString(withGeo.sender_postal)},
-      sender_country = ${asString(withGeo.sender_country)},
+      sender_address = ${senderAddress},
+      sender_street = ${""},
+      sender_city = ${""},
+      sender_state = ${null},
+      sender_postal = ${null},
+      sender_country = ${""},
       receiver_name = ${receiverName},
       receiver_phone = ${asString(withGeo.receiver_phone)},
       receiver_email = ${receiverEmail},
-      receiver_street = ${asString(withGeo.receiver_street)},
-      receiver_city = ${asString(withGeo.receiver_city)},
-      receiver_state = ${asNullableString(withGeo.receiver_state)},
-      receiver_postal = ${asNullableString(withGeo.receiver_postal)},
-      receiver_country = ${asString(withGeo.receiver_country)},
+      receiver_address = ${receiverAddress},
+      receiver_street = ${""},
+      receiver_city = ${""},
+      receiver_state = ${null},
+      receiver_postal = ${null},
+      receiver_country = ${""},
       departure_at = ${asNullableDate(withGeo.departure_at)},
       delivery_at = ${asNullableDate(withGeo.delivery_at)},
       volume = ${Number(withGeo.volume ?? 0)},
       payment_method = ${asString(withGeo.payment_method)},
+      current_address = ${asNullableString(withGeo.current_address)},
       origin_lat = ${asNullableNumber(withGeo.origin_lat)},
       origin_lng = ${asNullableNumber(withGeo.origin_lng)},
       destination_lat = ${asNullableNumber(withGeo.destination_lat)},
@@ -2263,13 +2309,13 @@ async function handleNotifyShipment(req, res) {
   const admin = adminNotifyEmail();
   let customerSent = false;
   let adminSent = false;
-  if ((parsed.data.notifyCustomer ?? true) && shipment.customerEmail) {
+  for (const email of getPartyNotificationEmails(shipment)) {
     const result = await sendEmailSafe({
-      to: shipment.customerEmail,
+      to: email,
       subject: customerShipmentSubject(ctx),
       react: CustomerShipmentEmail({ ctx })
     });
-    customerSent = result.emailSent;
+    if (result.emailSent) customerSent = true;
   }
   if (admin) {
     const result = await sendEmailSafe({
@@ -2294,6 +2340,7 @@ var partyFields = {
   sender_name: import_zod4.z.string().optional(),
   sender_phone: import_zod4.z.string().optional(),
   sender_email: optionalEmail,
+  sender_address: import_zod4.z.string().optional(),
   sender_street: import_zod4.z.string().optional(),
   sender_city: import_zod4.z.string().optional(),
   sender_state: import_zod4.z.string().nullable().optional(),
@@ -2302,11 +2349,13 @@ var partyFields = {
   receiver_name: import_zod4.z.string().optional(),
   receiver_phone: import_zod4.z.string().optional(),
   receiver_email: optionalEmail,
+  receiver_address: import_zod4.z.string().optional(),
   receiver_street: import_zod4.z.string().optional(),
   receiver_city: import_zod4.z.string().optional(),
   receiver_state: import_zod4.z.string().nullable().optional(),
   receiver_postal: import_zod4.z.string().nullable().optional(),
   receiver_country: import_zod4.z.string().optional(),
+  current_address: import_zod4.z.string().nullable().optional(),
   departure_at: import_zod4.z.string().nullable().optional(),
   delivery_at: import_zod4.z.string().nullable().optional(),
   volume: import_zod4.z.number().optional(),
@@ -2495,7 +2544,7 @@ async function handleShipmentById(req, res, id) {
         await insertEvent({
           shipment_id: id,
           status: row.status || null,
-          location: eventLocation || position_label || (lat != null && lng != null ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null) || row.destination || null,
+          location: eventLocation || position_label || row.current_address || (lat != null && lng != null ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null) || row.destination || null,
           message: eventMessage || `Status updated to ${row.status}`
         });
       }
@@ -2504,7 +2553,7 @@ async function handleShipmentById(req, res, id) {
         row,
         patch,
         {
-          notifyCustomer: notifyCustomer ?? false,
+          notifyCustomer: true,
           eventMessage,
           eventLocation,
           positionLabel: position_label

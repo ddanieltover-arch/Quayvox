@@ -26,11 +26,19 @@ export const PORT_COORDINATES: Record<string, GeoCoord> = {
 export function lookupPortCoords(place: string): GeoCoord | null {
   const trimmed = place.trim();
   if (!trimmed) return null;
-  if (PORT_COORDINATES[trimmed]) return PORT_COORDINATES[trimmed];
-  const key = Object.keys(PORT_COORDINATES).find(
-    (k) => k.toLowerCase() === trimmed.toLowerCase()
+
+  const exact = Object.keys(PORT_COORDINATES).find(
+    (key) => key.toLowerCase() === trimmed.toLowerCase()
   );
-  return key ? PORT_COORDINATES[key] : null;
+  if (exact) return PORT_COORDINATES[exact];
+
+  const lower = trimmed.toLowerCase();
+  for (const [key, coord] of Object.entries(PORT_COORDINATES)) {
+    const city = key.split(',')[0]?.trim().toLowerCase();
+    if (city && lower.includes(city)) return coord;
+  }
+
+  return null;
 }
 
 export function interpolateCoords(

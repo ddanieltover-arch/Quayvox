@@ -11,7 +11,7 @@ import { isServerConfigured, requireAdmin } from '../auth';
 import { handleOptions } from '../http';
 import { adminNotifyEmail, sendEmailSafe } from '../mail';
 import { getShipmentByTracking } from '../shipments';
-import { rowToShipmentEmailData } from '../shipmentNotifications';
+import { rowToShipmentEmailData, getPartyNotificationEmails } from '../shipmentNotifications';
 
 const bodySchema = z.object({
   trackingNumber: z.string().trim().min(3).max(64),
@@ -63,13 +63,13 @@ export async function handleNotifyShipment(req: VercelRequest, res: VercelRespon
   let customerSent = false;
   let adminSent = false;
 
-  if ((parsed.data.notifyCustomer ?? true) && shipment.customerEmail) {
+  for (const email of getPartyNotificationEmails(shipment)) {
     const result = await sendEmailSafe({
-      to: shipment.customerEmail,
+      to: email,
       subject: customerShipmentSubject(ctx),
       react: CustomerShipmentEmail({ ctx }),
     });
-    customerSent = result.emailSent;
+    if (result.emailSent) customerSent = true;
   }
 
   if (admin) {

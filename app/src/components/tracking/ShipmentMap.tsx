@@ -83,6 +83,10 @@ function shipmentHasGeo(s: MapShipmentGeo): boolean {
   );
 }
 
+export function shipmentHasMapGeo(s: MapShipmentGeo): boolean {
+  return shipmentHasGeo(s);
+}
+
 function buildRouteLatLngs(s: MapShipmentGeo): L.LatLngExpression[] {
   const coords: L.LatLngExpression[] = [];
   const origin = resolveOriginCoord(s);

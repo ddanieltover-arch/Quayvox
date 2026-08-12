@@ -1,6 +1,16 @@
 import type { ShipmentStatus } from '../../emails/constants';
 import type { ShipmentEmailContext, ShipmentEmailData } from '../../emails/types';
 
+/** Postgres date columns may arrive as Date objects — emails must receive strings. */
+export function formatEmailDate(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  const s = String(value).trim();
+  return s ? s.slice(0, 10) : null;
+}
+
 export function rowToShipmentEmailData(
   row: Record<string, unknown>,
   extras?: { positionLabel?: string | null }
@@ -17,11 +27,16 @@ export function rowToShipmentEmailData(
     carrier: String(row.carrier),
     mode: String(row.mode),
     priority: String(row.priority),
-    eta: (row.eta as string | null) ?? null,
+    eta: formatEmailDate(row.eta),
     progress: Number(row.progress) || 0,
     shipper: String(row.shipper),
     consignee: String(row.consignee),
     customerEmail: (row.customer_email as string | null) ?? null,
+    senderEmail: (row.sender_email as string | null) ?? null,
+    receiverEmail:
+      (row.receiver_email as string | null) ??
+      (row.customer_email as string | null) ??
+      null,
     currentLat: Number.isFinite(lat) ? lat : null,
     currentLng: Number.isFinite(lng) ? lng : null,
     positionLabel: extras?.positionLabel ?? null,
@@ -52,16 +67,20 @@ export function detectShipmentChanges(
   const prevLng = before.current_lng != null ? Number(before.current_lng) : null;
   const nextLat = after.current_lat != null ? Number(after.current_lat) : null;
   const nextLng = after.current_lng != null ? Number(after.current_lng) : null;
-  const positionChanged =
+  const coordsChanged =
     (Object.prototype.hasOwnProperty.call(patch, 'current_lat') ||
       Object.prototype.hasOwnProperty.call(patch, 'current_lng')) &&
     prevLat !== nextLat &&
     prevLng !== nextLng &&
     nextLat != null &&
     nextLng != null;
+  const addressChanged =
+    Object.prototype.hasOwnProperty.call(patch, 'current_address') &&
+    String(before.current_address ?? '').trim() !== String(after.current_address ?? '').trim();
+  const positionChanged = coordsChanged || addressChanged;
 
-  const prevEta = (before.eta as string | null) ?? null;
-  const nextEta = (after.eta as string | null) ?? null;
+  const prevEta = formatEmailDate(before.eta);
+  const nextEta = formatEmailDate(after.eta);
   const etaChanged =
     Object.prototype.hasOwnProperty.call(patch, 'eta') && prevEta !== nextEta;
 
@@ -124,19 +143,29 @@ export function buildContexts(
   return contexts;
 }
 
-export function shouldNotifyCustomer(
-  ctx: ShipmentEmailContext,
-  notifyCustomer: boolean,
-  customerEmail: string | null
-): boolean {
-  if (!customerEmail) return false;
-  if (ctx.kind === 'created' || ctx.kind === 'location' || ctx.kind === 'eta') return true;
-  if (ctx.kind === 'status') {
-    if (ctx.shipment.status === 'Exception') return true;
-    return notifyCustomer;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Unique sender + receiver emails for party notifications. */
+export function getPartyNotificationEmails(shipment: ShipmentEmailData): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [shipment.senderEmail, shipment.receiverEmail]) {
+    const email = raw?.trim();
+    if (!email || !EMAIL_RE.test(email)) continue;
+    const key = email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(email);
   }
-  if (ctx.kind === 'timeline') return notifyCustomer;
-  return false;
+  return out;
+}
+
+export function shouldNotifyCustomer(
+  _ctx: ShipmentEmailContext,
+  _notifyCustomer: boolean,
+  _customerEmail: string | null
+): boolean {
+  return true;
 }
 
 export function shouldNotifyAdmin(_ctx: ShipmentEmailContext): boolean {

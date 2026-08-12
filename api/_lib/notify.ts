@@ -13,6 +13,7 @@ import { adminNotifyEmail, sendEmailSafe } from './mail';
 import {
   buildContexts,
   detectShipmentChanges,
+  getPartyNotificationEmails,
   rowToShipmentEmailData,
   shouldNotifyAdmin,
   shouldNotifyCustomer,
@@ -81,7 +82,7 @@ export async function sendShipmentUpdateEmails(
   }
 
   const result = await dispatchShipmentContexts(contexts, {
-    notifyCustomer: options.notifyCustomer ?? false,
+    notifyCustomer: options.notifyCustomer ?? true,
   });
   return { ...result, contexts: contexts.length };
 }
@@ -95,17 +96,18 @@ async function dispatchShipmentContexts(
   let adminSent = false;
 
   for (const ctx of contexts) {
-    const email = ctx.shipment.customerEmail;
-    if (shouldNotifyCustomer(ctx, options.notifyCustomer, email)) {
-      const result = await sendEmailSafe(
-        {
-          to: email!,
-          subject: customerShipmentSubject(ctx),
-          react: CustomerShipmentEmail({ ctx }),
-        },
-        { template: `customer/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
-      );
-      if (result.emailSent) customerSent = true;
+    for (const email of getPartyNotificationEmails(ctx.shipment)) {
+      if (shouldNotifyCustomer(ctx, options.notifyCustomer, email)) {
+        const result = await sendEmailSafe(
+          {
+            to: email,
+            subject: customerShipmentSubject(ctx),
+            react: CustomerShipmentEmail({ ctx }),
+          },
+          { template: `customer/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
+        );
+        if (result.emailSent) customerSent = true;
+      }
     }
 
     if (shouldNotifyAdmin(ctx) && admin) {

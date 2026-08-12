@@ -65,6 +65,9 @@ export interface ShipmentRow {
   delivery_at?: string | null;
   volume?: number | null;
   payment_method?: string | null;
+  sender_address?: string | null;
+  receiver_address?: string | null;
+  current_address?: string | null;
   origin_lat?: number | null;
   origin_lng?: number | null;
   destination_lat?: number | null;
@@ -107,7 +110,34 @@ function asNullableNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function joinLegacyAddress(parts: Array<string | null | undefined>): string {
+  return parts.map((p) => p?.trim()).filter(Boolean).join(', ');
+}
+
 export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
+  const senderAddress =
+    row.sender_address?.trim() ||
+    joinLegacyAddress([
+      row.sender_street,
+      row.sender_city,
+      row.sender_state,
+      row.sender_postal,
+      row.sender_country,
+    ]) ||
+    row.origin ||
+    '';
+  const receiverAddress =
+    row.receiver_address?.trim() ||
+    joinLegacyAddress([
+      row.receiver_street,
+      row.receiver_city,
+      row.receiver_state,
+      row.receiver_postal,
+      row.receiver_country,
+    ]) ||
+    row.destination ||
+    '';
+
   return {
     id: row.id,
     trackingNumber: row.tracking_number,
@@ -137,19 +167,12 @@ export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
     senderName: row.sender_name ?? row.shipper ?? '',
     senderPhone: row.sender_phone ?? '',
     senderEmail: row.sender_email ?? null,
-    senderStreet: row.sender_street ?? '',
-    senderCity: row.sender_city ?? '',
-    senderState: row.sender_state ?? null,
-    senderPostal: row.sender_postal ?? null,
-    senderCountry: row.sender_country ?? '',
+    senderAddress,
     receiverName: row.receiver_name ?? row.consignee ?? '',
     receiverPhone: row.receiver_phone ?? '',
     receiverEmail: row.receiver_email ?? row.customer_email ?? null,
-    receiverStreet: row.receiver_street ?? '',
-    receiverCity: row.receiver_city ?? '',
-    receiverState: row.receiver_state ?? null,
-    receiverPostal: row.receiver_postal ?? null,
-    receiverCountry: row.receiver_country ?? '',
+    receiverAddress,
+    currentAddress: row.current_address ?? null,
     departureAt: row.departure_at ?? null,
     deliveryAt: row.delivery_at ?? null,
     volume: row.volume != null ? Number(row.volume) : 0,
@@ -201,11 +224,13 @@ export function toShipmentInsert(
   const senderName = data.senderName ?? data.shipper ?? '';
   const receiverName = data.receiverName ?? data.consignee ?? '';
   const receiverEmail = data.receiverEmail ?? data.customerEmail ?? null;
+  const senderAddress = data.senderAddress?.trim() || data.origin;
+  const receiverAddress = data.receiverAddress?.trim() || data.destination;
 
   return {
     tracking_number: tracking,
-    origin: data.origin,
-    destination: data.destination,
+    origin: senderAddress,
+    destination: receiverAddress,
     carrier: data.carrier,
     status: data.status,
     weight: data.weight,
@@ -226,19 +251,22 @@ export function toShipmentInsert(
     sender_name: senderName,
     sender_phone: data.senderPhone ?? '',
     sender_email: data.senderEmail ?? null,
-    sender_street: data.senderStreet ?? '',
-    sender_city: data.senderCity ?? '',
-    sender_state: data.senderState ?? null,
-    sender_postal: data.senderPostal ?? null,
-    sender_country: data.senderCountry ?? '',
+    sender_address: senderAddress,
+    sender_street: '',
+    sender_city: '',
+    sender_state: null,
+    sender_postal: null,
+    sender_country: '',
     receiver_name: receiverName,
     receiver_phone: data.receiverPhone ?? '',
     receiver_email: receiverEmail,
-    receiver_street: data.receiverStreet ?? '',
-    receiver_city: data.receiverCity ?? '',
-    receiver_state: data.receiverState ?? null,
-    receiver_postal: data.receiverPostal ?? null,
-    receiver_country: data.receiverCountry ?? '',
+    receiver_address: receiverAddress,
+    receiver_street: '',
+    receiver_city: '',
+    receiver_state: null,
+    receiver_postal: null,
+    receiver_country: '',
+    current_address: data.currentAddress ?? null,
     departure_at: data.departureAt ?? null,
     delivery_at: data.deliveryAt ?? null,
     volume: data.volume ?? 0,
@@ -282,11 +310,10 @@ export function toShipmentUpdate(updates: Partial<ShipmentWithExtras> & { positi
   }
   if (updates.senderPhone !== undefined) row.sender_phone = updates.senderPhone;
   if (updates.senderEmail !== undefined) row.sender_email = updates.senderEmail;
-  if (updates.senderStreet !== undefined) row.sender_street = updates.senderStreet;
-  if (updates.senderCity !== undefined) row.sender_city = updates.senderCity;
-  if (updates.senderState !== undefined) row.sender_state = updates.senderState;
-  if (updates.senderPostal !== undefined) row.sender_postal = updates.senderPostal;
-  if (updates.senderCountry !== undefined) row.sender_country = updates.senderCountry;
+  if (updates.senderAddress !== undefined) {
+    row.sender_address = updates.senderAddress;
+    row.origin = updates.origin ?? updates.senderAddress;
+  }
   if (updates.receiverName !== undefined) {
     row.receiver_name = updates.receiverName;
     row.consignee = updates.consignee ?? updates.receiverName;
@@ -296,11 +323,11 @@ export function toShipmentUpdate(updates: Partial<ShipmentWithExtras> & { positi
     row.receiver_email = updates.receiverEmail;
     row.customer_email = updates.customerEmail ?? updates.receiverEmail;
   }
-  if (updates.receiverStreet !== undefined) row.receiver_street = updates.receiverStreet;
-  if (updates.receiverCity !== undefined) row.receiver_city = updates.receiverCity;
-  if (updates.receiverState !== undefined) row.receiver_state = updates.receiverState;
-  if (updates.receiverPostal !== undefined) row.receiver_postal = updates.receiverPostal;
-  if (updates.receiverCountry !== undefined) row.receiver_country = updates.receiverCountry;
+  if (updates.receiverAddress !== undefined) {
+    row.receiver_address = updates.receiverAddress;
+    row.destination = updates.destination ?? updates.receiverAddress;
+  }
+  if (updates.currentAddress !== undefined) row.current_address = updates.currentAddress;
   if (updates.departureAt !== undefined) row.departure_at = updates.departureAt;
   if (updates.deliveryAt !== undefined) row.delivery_at = updates.deliveryAt;
   if (updates.volume !== undefined) row.volume = updates.volume;

@@ -31,6 +31,8 @@ const migrations = [
   '002_seed_shipments.sql',
   '003_shipment_geo.sql',
   '004_shipment_party_details.sql',
+  '005_quayvox_carrier.sql',
+  '006_unified_addresses.sql',
 ];
 
 await client.connect();

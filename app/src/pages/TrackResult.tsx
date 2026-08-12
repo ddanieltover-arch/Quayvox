@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MapPin, Package, Clock, Search } from 'lucide-react';
 import { getStatusColor } from '@/data/mockShipments';
-import { ShipmentMap } from '@/components/tracking/ShipmentMap';
+import { ShipmentMap, shipmentHasMapGeo } from '@/components/tracking/ShipmentMap';
+import { ShipmentDetailsDialog } from '@/components/tracking/ShipmentDetailsDialog';
 import { useTrackPolling } from '@/hooks/useTrackPolling';
 
 const TrackResult = () => {
@@ -25,14 +26,25 @@ const TrackResult = () => {
     if (next) navigate(`/track/${encodeURIComponent(next)}`);
   };
 
-  const hasMapGeo =
-    shipment &&
-    (shipment.originLat != null ||
-      shipment.destinationLat != null ||
-      shipment.currentLat != null ||
-      positions.length > 0 ||
-      Boolean(shipment.origin) ||
-      Boolean(shipment.destination));
+  const mapShipment = shipment
+    ? {
+        id: shipment.id,
+        trackingNumber: shipment.trackingNumber,
+        status: shipment.status,
+        progress: shipment.progress,
+        origin: shipment.origin,
+        destination: shipment.destination,
+        originLat: shipment.originLat,
+        originLng: shipment.originLng,
+        destinationLat: shipment.destinationLat,
+        destinationLng: shipment.destinationLng,
+        currentLat: shipment.currentLat,
+        currentLng: shipment.currentLng,
+        positions,
+      }
+    : null;
+
+  const hasMapGeo = mapShipment ? shipmentHasMapGeo(mapShipment) : false;
 
   return (
     <div className="pt-20 lg:pt-24 px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-3xl mx-auto pb-[max(2rem,env(safe-area-inset-bottom))]">
@@ -154,6 +166,8 @@ const TrackResult = () => {
             </div>
           </div>
 
+          <ShipmentDetailsDialog shipment={shipment} />
+
           <div className="card-surface p-0 overflow-hidden">
             <div className="px-5 sm:px-6 pt-5 pb-3 flex items-center justify-between gap-2">
               <h2 className="font-display font-semibold text-lg text-text-primary">Live map</h2>
@@ -163,30 +177,16 @@ const TrackResult = () => {
                 </p>
               )}
             </div>
-            {hasMapGeo ? (
+            {hasMapGeo && mapShipment ? (
               <ShipmentMap
-                shipments={[
-                  {
-                    id: shipment.id,
-                    trackingNumber: shipment.trackingNumber,
-                    status: shipment.status,
-                    progress: shipment.progress,
-                    origin: shipment.origin,
-                    destination: shipment.destination,
-                    originLat: shipment.originLat,
-                    originLng: shipment.originLng,
-                    destinationLat: shipment.destinationLat,
-                    destinationLng: shipment.destinationLng,
-                    currentLat: shipment.currentLat,
-                    currentLng: shipment.currentLng,
-                    positions,
-                  },
-                ]}
+                shipments={[mapShipment]}
                 className="h-64 sm:h-80 mx-5 sm:mx-6 mb-5 sm:mb-6"
               />
             ) : (
               <p className="px-5 sm:px-6 pb-5 text-sm text-text-secondary">
-                Location updates when the shipment is scanned.
+                Map appears when origin and destination include a recognized city (for example{' '}
+                <span className="font-mono text-cobalt">Los Angeles, US</span>) or when a scan
+                location is added in admin.
               </p>
             )}
           </div>

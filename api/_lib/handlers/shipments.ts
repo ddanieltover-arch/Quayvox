@@ -23,6 +23,7 @@ const partyFields = {
   sender_name: z.string().optional(),
   sender_phone: z.string().optional(),
   sender_email: optionalEmail,
+  sender_address: z.string().optional(),
   sender_street: z.string().optional(),
   sender_city: z.string().optional(),
   sender_state: z.string().nullable().optional(),
@@ -31,11 +32,13 @@ const partyFields = {
   receiver_name: z.string().optional(),
   receiver_phone: z.string().optional(),
   receiver_email: optionalEmail,
+  receiver_address: z.string().optional(),
   receiver_street: z.string().optional(),
   receiver_city: z.string().optional(),
   receiver_state: z.string().nullable().optional(),
   receiver_postal: z.string().nullable().optional(),
   receiver_country: z.string().optional(),
+  current_address: z.string().nullable().optional(),
   departure_at: z.string().nullable().optional(),
   delivery_at: z.string().nullable().optional(),
   volume: z.number().optional(),
@@ -262,6 +265,7 @@ export async function handleShipmentById(
           location:
             eventLocation ||
             position_label ||
+            (row.current_address as string | null) ||
             (lat != null && lng != null ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null) ||
             (row.destination as string) ||
             null,
@@ -274,7 +278,7 @@ export async function handleShipmentById(
         row as Record<string, unknown>,
         patch,
         {
-          notifyCustomer: notifyCustomer ?? false,
+          notifyCustomer: true,
           eventMessage,
           eventLocation,
           positionLabel: position_label,

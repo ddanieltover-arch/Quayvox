@@ -146,7 +146,9 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const row = toShipmentUpdate(updates);
       const statusChanged = updates.status && existing && updates.status !== existing.status;
       const positionChanged =
-        updates.currentLat !== undefined || updates.currentLng !== undefined;
+        updates.currentLat !== undefined ||
+        updates.currentLng !== undefined ||
+        updates.currentAddress !== undefined;
 
       try {
         const res = await fetch(`/api/shipments/${encodeURIComponent(id)}`, {
@@ -164,7 +166,7 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   ? 'Location updated'
                   : undefined),
             eventLocation: options?.eventLocation ?? updates.positionLabel ?? undefined,
-            notifyCustomer: options?.notifyCustomer ?? false,
+            notifyCustomer: true,
           }),
         });
         const data = (await res.json()) as { shipment?: ShipmentRow; error?: string };

@@ -43,14 +43,7 @@ const Shipments = () => {
     eta: '',
     customerEmail: '',
     notes: '',
-    notifyCustomer: true,
-    currentLat: '',
-    currentLng: '',
-    positionLabel: '',
-    originLat: '',
-    originLng: '',
-    destinationLat: '',
-    destinationLng: '',
+    currentAddress: '',
   });
   const [saving, setSaving] = useState(false);
   const itemsPerPage = 10;
@@ -143,43 +136,12 @@ const Shipments = () => {
       eta: shipment.eta,
       customerEmail: shipment.customerEmail || '',
       notes: shipment.notes || '',
-      notifyCustomer: Boolean(shipment.customerEmail),
-      currentLat: shipment.currentLat != null ? String(shipment.currentLat) : '',
-      currentLng: shipment.currentLng != null ? String(shipment.currentLng) : '',
-      positionLabel: '',
-      originLat: shipment.originLat != null ? String(shipment.originLat) : '',
-      originLng: shipment.originLng != null ? String(shipment.originLng) : '',
-      destinationLat: shipment.destinationLat != null ? String(shipment.destinationLat) : '',
-      destinationLng: shipment.destinationLng != null ? String(shipment.destinationLng) : '',
+      currentAddress: shipment.currentAddress || '',
     });
-  };
-
-  const parseOptionalCoord = (value: string): number | null | undefined => {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? n : undefined;
   };
 
   const saveEdit = async () => {
     if (!editing) return;
-
-    const currentLat = parseOptionalCoord(editForm.currentLat);
-    const currentLng = parseOptionalCoord(editForm.currentLng);
-    if (
-      (editForm.currentLat.trim() || editForm.currentLng.trim()) &&
-      (currentLat === undefined || currentLng === undefined)
-    ) {
-      return;
-    }
-    if ((currentLat == null) !== (currentLng == null)) {
-      return;
-    }
-
-    const originLat = parseOptionalCoord(editForm.originLat);
-    const originLng = parseOptionalCoord(editForm.originLng);
-    const destinationLat = parseOptionalCoord(editForm.destinationLat);
-    const destinationLng = parseOptionalCoord(editForm.destinationLng);
 
     setSaving(true);
 
@@ -191,49 +153,24 @@ const Shipments = () => {
       notes: editForm.notes || null,
     };
 
-    const nextOriginLat = originLat === undefined ? editing.originLat ?? null : originLat;
-    const nextOriginLng = originLng === undefined ? editing.originLng ?? null : originLng;
-    const nextDestLat =
-      destinationLat === undefined ? editing.destinationLat ?? null : destinationLat;
-    const nextDestLng =
-      destinationLng === undefined ? editing.destinationLng ?? null : destinationLng;
-
-    if (nextOriginLat !== (editing.originLat ?? null) || nextOriginLng !== (editing.originLng ?? null)) {
-      updates.originLat = nextOriginLat;
-      updates.originLng = nextOriginLng;
-    }
-    if (
-      nextDestLat !== (editing.destinationLat ?? null) ||
-      nextDestLng !== (editing.destinationLng ?? null)
-    ) {
-      updates.destinationLat = nextDestLat;
-      updates.destinationLng = nextDestLng;
-    }
-
-    const nextCurrentLat = currentLat === undefined ? editing.currentLat ?? null : currentLat;
-    const nextCurrentLng = currentLng === undefined ? editing.currentLng ?? null : currentLng;
-    const positionChanged =
-      nextCurrentLat !== (editing.currentLat ?? null) ||
-      nextCurrentLng !== (editing.currentLng ?? null);
+    const nextCurrentAddress = editForm.currentAddress.trim();
+    const addressChanged = nextCurrentAddress !== (editing.currentAddress ?? '').trim();
     const statusChanged = editForm.status !== editing.status;
     const etaChanged = editForm.eta !== editing.eta;
 
-    if (positionChanged) {
-      updates.currentLat = nextCurrentLat;
-      updates.currentLng = nextCurrentLng;
-      updates.positionLabel = editForm.positionLabel.trim() || null;
+    if (addressChanged) {
+      updates.currentAddress = nextCurrentAddress || null;
     }
 
     await updateShipment(editing.id, updates, {
-      notifyCustomer: editForm.notifyCustomer,
       eventMessage: statusChanged
         ? `Status updated to ${editForm.status}`
-        : positionChanged
+        : addressChanged
           ? 'Location updated'
           : etaChanged
             ? 'ETA updated'
             : undefined,
-      eventLocation: editForm.positionLabel.trim() || undefined,
+      eventLocation: addressChanged ? nextCurrentAddress : undefined,
     });
     setSaving(false);
     setEditing(null);
@@ -639,118 +576,22 @@ const Shipments = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                    Origin lat
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={editForm.originLat}
-                    onChange={(e) => setEditForm((f) => ({ ...f, originLat: e.target.value }))}
-                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                    placeholder="31.2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                    Origin lng
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={editForm.originLng}
-                    onChange={(e) => setEditForm((f) => ({ ...f, originLng: e.target.value }))}
-                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                    placeholder="121.5"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                    Dest lat
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={editForm.destinationLat}
-                    onChange={(e) =>
-                      setEditForm((f) => ({ ...f, destinationLat: e.target.value }))
-                    }
-                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                    placeholder="34.1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                    Dest lng
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={editForm.destinationLng}
-                    onChange={(e) =>
-                      setEditForm((f) => ({ ...f, destinationLng: e.target.value }))
-                    }
-                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                    placeholder="-118.2"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                    Current lat
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={editForm.currentLat}
-                    onChange={(e) => setEditForm((f) => ({ ...f, currentLat: e.target.value }))}
-                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                    placeholder="Live latitude"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                    Current lng
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={editForm.currentLng}
-                    onChange={(e) => setEditForm((f) => ({ ...f, currentLng: e.target.value }))}
-                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                    placeholder="Live longitude"
-                  />
-                </div>
-              </div>
-
               <div>
                 <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                  Position label
+                  Current address
                 </label>
-                <input
-                  type="text"
-                  value={editForm.positionLabel}
-                  onChange={(e) => setEditForm((f) => ({ ...f, positionLabel: e.target.value }))}
-                  className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                  placeholder="e.g. Mid-Pacific · scan hub"
+                <textarea
+                  value={editForm.currentAddress}
+                  onChange={(e) => setEditForm((f) => ({ ...f, currentAddress: e.target.value }))}
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                  placeholder="e.g. Port of Los Angeles, Berth 302, San Pedro, CA 90731, USA"
                 />
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={editForm.notifyCustomer}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, notifyCustomer: e.target.checked }))
-                  }
-                  className="rounded border-white/20 bg-navy-700 text-cobalt"
-                />
-                Email customer on status change
-              </label>
+              <p className="text-xs text-text-secondary">
+                Sender and receiver are emailed automatically on every update when their email is on file.
+              </p>
 
               <div className="flex gap-2 pt-2">
                 <button

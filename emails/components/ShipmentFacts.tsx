@@ -2,6 +2,14 @@ import { Text } from '@react-email/components';
 import { BRAND, FONTS } from '../constants';
 import type { ShipmentEmailData } from '../types';
 
+function displayMetricValue(value: unknown): string {
+  if (value == null || value === '') return 'TBC';
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? 'TBC' : value.toISOString().slice(0, 10);
+  }
+  return String(value);
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <td width="50%" valign="top" style={{ padding: '0 6px 12px' }}>
@@ -59,11 +67,14 @@ export function MetricGrid({
   extra?: Array<{ label: string; value: string }>;
 }) {
   const items = [
-    { label: 'Mode', value: shipment.mode },
-    { label: 'Carrier', value: shipment.carrier },
-    { label: 'Priority', value: shipment.priority },
-    { label: 'ETA', value: shipment.eta || 'TBC' },
-    ...(extra ?? []),
+    { label: 'Mode', value: displayMetricValue(shipment.mode) },
+    { label: 'Carrier', value: displayMetricValue(shipment.carrier) },
+    { label: 'Priority', value: displayMetricValue(shipment.priority) },
+    { label: 'ETA', value: displayMetricValue(shipment.eta) },
+    ...(extra ?? []).map((item) => ({
+      label: item.label,
+      value: displayMetricValue(item.value),
+    })),
   ];
 
   const rows: Array<typeof items> = [];

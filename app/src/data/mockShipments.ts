@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { QUAYVOX_CARRIER } from '@/lib/shipmentConstants';
 
 export interface Shipment {
   id: string;
@@ -25,19 +26,12 @@ export interface Shipment {
   senderName?: string;
   senderPhone?: string;
   senderEmail?: string | null;
-  senderStreet?: string;
-  senderCity?: string;
-  senderState?: string | null;
-  senderPostal?: string | null;
-  senderCountry?: string;
+  senderAddress?: string;
   receiverName?: string;
   receiverPhone?: string;
   receiverEmail?: string | null;
-  receiverStreet?: string;
-  receiverCity?: string;
-  receiverState?: string | null;
-  receiverPostal?: string | null;
-  receiverCountry?: string;
+  receiverAddress?: string;
+  currentAddress?: string | null;
   departureAt?: string | null;
   deliveryAt?: string | null;
   volume?: number;
@@ -57,7 +51,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7842',
     origin: 'Shanghai, CN',
     destination: 'Los Angeles, US',
-    carrier: 'Maersk',
+    carrier: QUAYVOX_CARRIER,
     status: 'In Transit',
     weight: 12500,
     dimensions: { l: 40, w: 8, h: 8.5 },
@@ -78,7 +72,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7843',
     origin: 'Rotterdam, NL',
     destination: 'New York, US',
-    carrier: 'Hapag-Lloyd',
+    carrier: QUAYVOX_CARRIER,
     status: 'Customs',
     weight: 8500,
     dimensions: { l: 20, w: 8, h: 8 },
@@ -99,7 +93,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7844',
     origin: 'Singapore, SG',
     destination: 'Sydney, AU',
-    carrier: 'DHL Express',
+    carrier: QUAYVOX_CARRIER,
     status: 'In Transit',
     weight: 450,
     dimensions: { l: 4, w: 3, h: 2 },
@@ -120,7 +114,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7845',
     origin: 'Hamburg, DE',
     destination: 'Dubai, AE',
-    carrier: 'DB Schenker',
+    carrier: QUAYVOX_CARRIER,
     status: 'Pending',
     weight: 22000,
     dimensions: { l: 60, w: 8, h: 9 },
@@ -141,7 +135,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7846',
     origin: 'Tokyo, JP',
     destination: 'London, UK',
-    carrier: 'FedEx',
+    carrier: QUAYVOX_CARRIER,
     status: 'Delivered',
     weight: 120,
     dimensions: { l: 2, w: 1.5, h: 1 },
@@ -162,7 +156,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7847',
     origin: 'Mumbai, IN',
     destination: 'Nairobi, KE',
-    carrier: 'Safmarine',
+    carrier: QUAYVOX_CARRIER,
     status: 'Exception',
     weight: 15000,
     dimensions: { l: 40, w: 8, h: 8.5 },
@@ -183,7 +177,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7848',
     origin: 'Sao Paulo, BR',
     destination: 'Miami, US',
-    carrier: 'LATAM Cargo',
+    carrier: QUAYVOX_CARRIER,
     status: 'In Transit',
     weight: 3500,
     dimensions: { l: 15, w: 6, h: 6 },
@@ -204,7 +198,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7849',
     origin: 'Busan, KR',
     destination: 'Hamburg, DE',
-    carrier: 'ONE Line',
+    carrier: QUAYVOX_CARRIER,
     status: 'In Transit',
     weight: 18000,
     dimensions: { l: 40, w: 8, h: 8.5 },
@@ -225,7 +219,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7850',
     origin: 'Melbourne, AU',
     destination: 'Auckland, NZ',
-    carrier: 'Toll Group',
+    carrier: QUAYVOX_CARRIER,
     status: 'Delivered',
     weight: 800,
     dimensions: { l: 6, w: 4, h: 3 },
@@ -246,7 +240,7 @@ export const generateMockShipments = (): Shipment[] => [
     trackingNumber: 'SH-2026-7851',
     origin: 'Dubai, AE',
     destination: 'Lagos, NG',
-    carrier: 'Emirates SkyCargo',
+    carrier: QUAYVOX_CARRIER,
     status: 'Pending',
     weight: 2000,
     dimensions: { l: 10, w: 5, h: 4 },
@@ -264,7 +258,7 @@ export const generateMockShipments = (): Shipment[] => [
   },
 ];
 
-export const carriers = ['Maersk', 'Hapag-Lloyd', 'DHL Express', 'DB Schenker', 'FedEx', 'Safmarine', 'LATAM Cargo', 'ONE Line', 'Toll Group', 'Emirates SkyCargo'];
+export const carriers = [QUAYVOX_CARRIER];
 export const origins = ['Shanghai, CN', 'Rotterdam, NL', 'Singapore, SG', 'Hamburg, DE', 'Tokyo, JP', 'Mumbai, IN', 'Sao Paulo, BR', 'Busan, KR', 'Melbourne, AU', 'Dubai, AE'];
 export const destinations = ['Los Angeles, US', 'New York, US', 'Sydney, AU', 'Dubai, AE', 'London, UK', 'Nairobi, KE', 'Miami, US', 'Hamburg, DE', 'Auckland, NZ', 'Lagos, NG'];
 

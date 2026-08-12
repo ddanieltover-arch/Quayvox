@@ -3,10 +3,11 @@ import { ArrowRight, ArrowLeft, Check, Plane, Ship, Train, Truck } from 'lucide-
 import { useShipments } from '@/context/ShipmentContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { QUAYVOX_CARRIER } from '@/lib/shipmentConstants';
 
 const steps = ['Sender & Receiver', 'Freight & Schedule', 'Review'];
 
-const DEFAULT_CARRIER = 'Quayvox - Global Logistics';
+const DEFAULT_CARRIER = QUAYVOX_CARRIER;
 
 const inputClass =
   'w-full px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50';
@@ -22,10 +23,6 @@ function fromLocalInputValue(value: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function formatPlace(city: string, country: string) {
-  return [city.trim(), country.trim()].filter(Boolean).join(', ');
-}
-
 const CreateShipment = () => {
   const { addShipment } = useShipments();
   const navigate = useNavigate();
@@ -36,19 +33,11 @@ const CreateShipment = () => {
     senderName: '',
     senderPhone: '',
     senderEmail: '',
-    senderStreet: '',
-    senderCity: '',
-    senderState: '',
-    senderPostal: '',
-    senderCountry: '',
+    senderAddress: '',
     receiverName: '',
     receiverPhone: '',
     receiverEmail: '',
-    receiverStreet: '',
-    receiverCity: '',
-    receiverState: '',
-    receiverPostal: '',
-    receiverCountry: '',
+    receiverAddress: '',
     departureAt: '',
     deliveryAt: '',
     weight: '',
@@ -72,15 +61,11 @@ const CreateShipment = () => {
       const required = [
         form.senderName,
         form.senderPhone,
-        form.senderStreet,
-        form.senderCity,
-        form.senderCountry,
+        form.senderAddress,
         form.receiverName,
         form.receiverPhone,
         form.receiverEmail,
-        form.receiverStreet,
-        form.receiverCity,
-        form.receiverCountry,
+        form.receiverAddress,
       ];
       if (required.some((v) => !v.trim())) {
         toast.error('Fill all required sender and receiver fields');
@@ -121,8 +106,8 @@ const CreateShipment = () => {
       return;
     }
 
-    const origin = formatPlace(form.senderCity, form.senderCountry);
-    const destination = formatPlace(form.receiverCity, form.receiverCountry);
+    const senderAddress = form.senderAddress.trim();
+    const receiverAddress = form.receiverAddress.trim();
     const departureAt = fromLocalInputValue(form.departureAt);
     const deliveryAt = fromLocalInputValue(form.deliveryAt);
     const eta = deliveryAt ? deliveryAt.slice(0, 10) : new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
@@ -130,8 +115,8 @@ const CreateShipment = () => {
     setSubmitting(true);
     try {
       const created = await addShipment({
-        origin,
-        destination,
+        origin: senderAddress,
+        destination: receiverAddress,
         carrier: DEFAULT_CARRIER,
         status: 'Pending',
         weight: Number(form.weight),
@@ -154,19 +139,11 @@ const CreateShipment = () => {
         senderName: form.senderName.trim(),
         senderPhone: form.senderPhone.trim(),
         senderEmail: form.senderEmail.trim() || null,
-        senderStreet: form.senderStreet.trim(),
-        senderCity: form.senderCity.trim(),
-        senderState: form.senderState.trim() || null,
-        senderPostal: form.senderPostal.trim() || null,
-        senderCountry: form.senderCountry.trim(),
+        senderAddress,
         receiverName: form.receiverName.trim(),
         receiverPhone: form.receiverPhone.trim(),
         receiverEmail: form.receiverEmail.trim(),
-        receiverStreet: form.receiverStreet.trim(),
-        receiverCity: form.receiverCity.trim(),
-        receiverState: form.receiverState.trim() || null,
-        receiverPostal: form.receiverPostal.trim() || null,
-        receiverCountry: form.receiverCountry.trim(),
+        receiverAddress,
         departureAt,
         deliveryAt,
         volume: Number(form.volume),
@@ -229,25 +206,15 @@ const CreateShipment = () => {
                   <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER EMAIL</label>
                   <input type="email" className={inputClass} value={form.senderEmail} onChange={(e) => updateField('senderEmail', e.target.value)} placeholder="e.g., sender@example.com" />
                 </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER STREET ADDRESS*</label>
-                  <input className={inputClass} value={form.senderStreet} onChange={(e) => updateField('senderStreet', e.target.value)} placeholder="e.g., 123 Origin Hub" />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER CITY*</label>
-                  <input className={inputClass} value={form.senderCity} onChange={(e) => updateField('senderCity', e.target.value)} placeholder="e.g., Wroclaw" />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER STATE / REGION</label>
-                  <input className={inputClass} value={form.senderState} onChange={(e) => updateField('senderState', e.target.value)} placeholder="e.g., Lower Silesian" />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER POSTAL CODE</label>
-                  <input className={inputClass} value={form.senderPostal} onChange={(e) => updateField('senderPostal', e.target.value)} placeholder="e.g., 51-644" />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER COUNTRY*</label>
-                  <input className={inputClass} value={form.senderCountry} onChange={(e) => updateField('senderCountry', e.target.value)} placeholder="e.g., Poland" />
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER ADDRESS*</label>
+                  <textarea
+                    rows={3}
+                    className={`${inputClass} resize-y`}
+                    value={form.senderAddress}
+                    onChange={(e) => updateField('senderAddress', e.target.value)}
+                    placeholder="e.g., 123 Origin Hub, Wroclaw, Lower Silesian 51-644, Poland"
+                  />
                 </div>
               </div>
             </section>
@@ -263,29 +230,19 @@ const CreateShipment = () => {
                   <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER PHONE*</label>
                   <input className={inputClass} value={form.receiverPhone} onChange={(e) => updateField('receiverPhone', e.target.value)} placeholder="e.g., +44 20 7123 4567" />
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER EMAIL* (AUTO-ACCOUNT & ALERTS)</label>
                   <input type="email" className={inputClass} value={form.receiverEmail} onChange={(e) => updateField('receiverEmail', e.target.value)} placeholder="customer@example.com" />
                 </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER STREET ADDRESS*</label>
-                  <input className={inputClass} value={form.receiverStreet} onChange={(e) => updateField('receiverStreet', e.target.value)} placeholder="e.g., 456 Destination Rd" />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER CITY*</label>
-                  <input className={inputClass} value={form.receiverCity} onChange={(e) => updateField('receiverCity', e.target.value)} placeholder="e.g., London" />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER STATE / REGION</label>
-                  <input className={inputClass} value={form.receiverState} onChange={(e) => updateField('receiverState', e.target.value)} placeholder="e.g., England" />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER POSTAL CODE</label>
-                  <input className={inputClass} value={form.receiverPostal} onChange={(e) => updateField('receiverPostal', e.target.value)} placeholder="e.g., SW1A 1AA" />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER COUNTRY*</label>
-                  <input className={inputClass} value={form.receiverCountry} onChange={(e) => updateField('receiverCountry', e.target.value)} placeholder="e.g., UK" />
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER ADDRESS*</label>
+                  <textarea
+                    rows={3}
+                    className={`${inputClass} resize-y`}
+                    value={form.receiverAddress}
+                    onChange={(e) => updateField('receiverAddress', e.target.value)}
+                    placeholder="e.g., 456 Destination Rd, London, England SW1A 1AA, UK"
+                  />
                 </div>
               </div>
             </section>
@@ -356,6 +313,16 @@ const CreateShipment = () => {
             <section className="space-y-4">
               <h3 className="font-display font-semibold text-lg text-text-primary">Transport</h3>
               <div>
+                <label className="block text-xs font-mono text-text-secondary mb-1.5">CARRIER</label>
+                <div
+                  className={`${inputClass} bg-navy-900/80 cursor-default border-cobalt/20 text-text-primary font-medium`}
+                  aria-readonly="true"
+                >
+                  {DEFAULT_CARRIER}
+                </div>
+                <p className="text-xs text-text-secondary mt-1.5">All Quayvox shipments use this carrier.</p>
+              </div>
+              <div>
                 <label className="block text-xs font-mono text-text-secondary mb-1.5">TRANSPORT MODE</label>
                 <div className="grid grid-cols-4 gap-3">
                   {(['Ocean', 'Air', 'Rail', 'Road'] as const).map((mode) => {
@@ -417,12 +384,12 @@ const CreateShipment = () => {
             <h3 className="font-display font-semibold text-lg text-text-primary">Review & Confirm</h3>
             <div className="space-y-3">
               {[
-                { label: 'Route', value: `${formatPlace(form.senderCity, form.senderCountry)} → ${formatPlace(form.receiverCity, form.receiverCountry)}` },
+                { label: 'Route', value: `${form.senderAddress || '—'} → ${form.receiverAddress || '—'}` },
                 { label: 'Sender', value: `${form.senderName} · ${form.senderPhone}` },
-                { label: 'Sender address', value: [form.senderStreet, form.senderCity, form.senderState, form.senderPostal, form.senderCountry].filter(Boolean).join(', ') },
+                { label: 'Sender address', value: form.senderAddress },
                 { label: 'Receiver', value: `${form.receiverName} · ${form.receiverPhone}` },
                 { label: 'Receiver email', value: form.receiverEmail },
-                { label: 'Receiver address', value: [form.receiverStreet, form.receiverCity, form.receiverState, form.receiverPostal, form.receiverCountry].filter(Boolean).join(', ') },
+                { label: 'Receiver address', value: form.receiverAddress },
                 { label: 'Departure', value: form.departureAt || '—' },
                 { label: 'Delivery', value: form.deliveryAt || '—' },
                 { label: 'Weight / Volume', value: `${form.weight} kg / ${form.volume}` },

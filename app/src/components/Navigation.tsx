@@ -4,7 +4,8 @@ import { Menu, X, Ship, LayoutDashboard, PackageSearch } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import ThemeToggle from '@/components/ThemeToggle';
 
-const navLinks = [
+const navLinks: { label: string; to: string; end?: boolean }[] = [
+  { label: 'Home', to: '/', end: true },
   { label: 'Product', to: '/product' },
   { label: 'Solutions', to: '/solutions' },
   { label: 'Pricing', to: '/pricing' },
@@ -57,7 +58,7 @@ const Navigation = () => {
 
           <div className="hidden lg:flex items-center gap-8">
             {navLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} className={linkClass}>
+              <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>
                 {link.label}
               </NavLink>
             ))}
@@ -129,6 +130,7 @@ const Navigation = () => {
             <NavLink
               key={link.to}
               to={link.to}
+              end={link.end}
               className={({ isActive }) =>
                 `flex items-center text-base font-medium min-h-11 ${
                   isActive ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
