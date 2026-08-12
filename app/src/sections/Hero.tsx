@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, MessageCircle, Search, Package, MapPin, Truck } from 'lucide-react';
+import { ArrowRight, MessageCircle, Search, MapPin, Truck } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { images } from '@/assets/images';
@@ -111,20 +111,20 @@ const Hero = () => {
         >
           <img
             src={images.heroMap}
-            alt="Global Logistics Network"
-            className="w-full h-full object-cover"
+            alt="Quayvox freight truck on the highway at dusk"
+            className="w-full h-full object-cover object-center"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-navy-900/60 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-navy-900/55 via-navy-900/10 to-transparent" />
 
           <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-navy-900/80 backdrop-blur-sm border border-white/10">
                 <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                <span className="text-xs font-mono text-text-secondary">LIVE</span>
+                <span className="text-xs font-mono text-text-secondary">LIVE TRACKING</span>
               </div>
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-navy-900/80 backdrop-blur-sm border border-white/10">
-                <Package className="w-3.5 h-3.5 text-cobalt" />
-                <span className="text-xs font-mono text-text-secondary">2.4M SHIPMENTS</span>
+                <Truck className="w-3.5 h-3.5 text-cobalt" />
+                <span className="text-xs font-mono text-text-secondary">HIGHWAY FREIGHT</span>
               </div>
             </div>
           </div>

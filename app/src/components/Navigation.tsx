@@ -14,8 +14,8 @@ const navLinks: { label: string; to: string; end?: boolean }[] = [
 ];
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
-  `text-sm font-medium transition-colors duration-300 ${
-    isActive ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
+  `nav-link relative text-sm font-medium transition-colors duration-300 ${
+    isActive ? 'text-text-primary nav-link-active' : 'text-text-secondary hover:text-text-primary'
   }`;
 
 const Navigation = () => {

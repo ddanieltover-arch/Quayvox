@@ -68,16 +68,6 @@ const Track = () => {
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
-          <p className="mt-3 text-xs text-text-secondary">
-            Try a demo number like{' '}
-            <button
-              type="button"
-              onClick={() => setTrackingId('SH-2026-7842')}
-              className="font-mono text-cobalt hover:underline"
-            >
-              SH-2026-7842
-            </button>
-          </p>
         </form>
       </PageHero>
 

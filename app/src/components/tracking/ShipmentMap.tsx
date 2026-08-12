@@ -184,6 +184,117 @@ function createMarkerIcon(kind: 'origin' | 'destination' | 'current', selected: 
   });
 }
 
+/** One-shot SVG stroke draw-in for a Leaflet polyline (no-op if path missing). */
+function animatePolylineDrawIn(
+  line: L.Polyline,
+  durationMs = 800,
+  onComplete?: () => void
+): void {
+  const run = () => {
+    const path = line.getElement() as SVGPathElement | null | undefined;
+    if (!path || typeof path.getTotalLength !== 'function') {
+      onComplete?.();
+      return;
+    }
+
+    const length = path.getTotalLength();
+    if (!Number.isFinite(length) || length <= 0) {
+      onComplete?.();
+      return;
+    }
+
+    path.style.strokeDasharray = `${length}`;
+    path.style.strokeDashoffset = `${length}`;
+    // Force layout so the browser registers the initial offset before transitioning.
+    void path.getBoundingClientRect();
+    path.style.transition = `stroke-dashoffset ${durationMs}ms ease-out`;
+
+    requestAnimationFrame(() => {
+      path.style.strokeDashoffset = '0';
+    });
+
+    window.setTimeout(() => {
+      path.style.transition = '';
+      path.style.strokeDasharray = '';
+      path.style.strokeDashoffset = '';
+      onComplete?.();
+    }, durationMs + 60);
+  };
+
+  // Path element exists after the layer is painted.
+  requestAnimationFrame(() => requestAnimationFrame(run));
+}
+
+const ROUTE_FLOW_DASH = '8 12';
+const ROUTE_FLOW_CYCLE_PX = 20; // 8 + 12
+
+/** Continuous dash flow along a route; returns a disposer. */
+function startRouteDashFlow(line: L.Polyline): () => void {
+  let cancelled = false;
+  let path: SVGPathElement | null = null;
+
+  const apply = () => {
+    if (cancelled) return;
+    path = (line.getElement() as SVGPathElement | null | undefined) ?? null;
+    if (!path) return;
+    line.setStyle({ dashArray: ROUTE_FLOW_DASH });
+    path.style.setProperty('--qv-flow-cycle', `${ROUTE_FLOW_CYCLE_PX}px`);
+    path.classList.add('qv-map-route--flow');
+  };
+
+  requestAnimationFrame(() => requestAnimationFrame(apply));
+
+  return () => {
+    cancelled = true;
+    path = (line.getElement() as SVGPathElement | null | undefined) ?? path;
+    path?.classList.remove('qv-map-route--flow');
+    path?.style.removeProperty('--qv-flow-cycle');
+    try {
+      line.setStyle({ dashArray: undefined });
+    } catch {
+      // Layer may already be removed.
+    }
+  };
+}
+
+function coordsDiffer(a: GeoCoord, b: GeoCoord, epsilon = 1e-5): boolean {
+  return Math.abs(a[0] - b[0]) > epsilon || Math.abs(a[1] - b[1]) > epsilon;
+}
+
+/** Ease a marker from its current lat/lng to a target. Returns a disposer. */
+function animateMarkerTo(
+  marker: L.Marker,
+  to: GeoCoord,
+  durationMs = 650
+): () => void {
+  const from = marker.getLatLng();
+  const start = performance.now();
+  let raf = 0;
+  let cancelled = false;
+
+  const tick = (now: number) => {
+    if (cancelled) return;
+    const t = Math.min(1, (now - start) / durationMs);
+    const eased = 1 - (1 - t) ** 3; // ease-out cubic
+    marker.setLatLng([
+      from.lat + (to[0] - from.lat) * eased,
+      from.lng + (to[1] - from.lng) * eased,
+    ]);
+    if (t < 1) {
+      raf = requestAnimationFrame(tick);
+    } else {
+      marker.setLatLng(to);
+    }
+  };
+
+  raf = requestAnimationFrame(tick);
+
+  return () => {
+    cancelled = true;
+    cancelAnimationFrame(raf);
+  };
+}
+
 export function ShipmentMap({
   shipments,
   selectedId,
@@ -199,6 +310,10 @@ export function ShipmentMap({
   const portsLayerRef = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const fittedKeyRef = useRef<string>('');
+  const drawnRouteIdsRef = useRef<Set<string>>(new Set());
+  const stopRouteFlowRef = useRef<(() => void) | null>(null);
+  const prevCurrentPositionsRef = useRef<Map<string, GeoCoord>>(new Map());
+  const stopMarkerAnimsRef = useRef<(() => void)[]>([]);
   const tileIndexRef = useRef(0);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -331,6 +446,13 @@ export function ShipmentMap({
       markersRef.current = [];
       portsLayerRef.current = null;
       tileLayerRef.current = null;
+      stopRouteFlowRef.current?.();
+      stopRouteFlowRef.current = null;
+      stopMarkerAnimsRef.current.forEach((stop) => stop());
+      stopMarkerAnimsRef.current = [];
+      prevCurrentPositionsRef.current.clear();
+      drawnRouteIdsRef.current.clear();
+      fittedKeyRef.current = '';
       map.remove();
       mapRef.current = null;
       setMapReady(false);
@@ -340,6 +462,11 @@ export function ShipmentMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
+
+    stopRouteFlowRef.current?.();
+    stopRouteFlowRef.current = null;
+    stopMarkerAnimsRef.current.forEach((stop) => stop());
+    stopMarkerAnimsRef.current = [];
 
     routesRef.current.forEach((line) => line.remove());
     routesRef.current = [];
@@ -352,17 +479,42 @@ export function ShipmentMap({
     }
 
     const bounds = L.latLngBounds([]);
+    const routesToDrawIn: { id: string; line: L.Polyline }[] = [];
+    const pendingDrawIds = new Set<string>();
+    const routeById = new Map<string, L.Polyline>();
+    const seenCurrentIds = new Set<string>();
+
+    const flowId =
+      selectedId && geoShipments.some((s) => s.id === selectedId)
+        ? selectedId
+        : geoShipments.length === 1
+          ? geoShipments[0].id
+          : null;
+    const multi = geoShipments.length > 1;
 
     for (const s of geoShipments) {
       const route = buildRouteLatLngs(s);
       if (route.length >= 2) {
+        const isFlowTarget = flowId != null && s.id === flowId;
         const line = L.polyline(route, {
           color: '#4F6DF5',
-          weight: 2.5,
-          opacity: 0.85,
+          weight: isFlowTarget ? 3 : 2.5,
+          opacity: multi && flowId && !isFlowTarget ? 0.45 : 0.85,
+          className: 'qv-map-route',
         }).addTo(map);
         routesRef.current.push(line);
+        routeById.set(s.id, line);
         route.forEach((point) => bounds.extend(point));
+
+        // Draw-in once per shipment while this map instance is alive.
+        if (!drawnRouteIdsRef.current.has(s.id)) {
+          if (!reduceMotion) {
+            routesToDrawIn.push({ id: s.id, line });
+            pendingDrawIds.add(s.id);
+          } else {
+            drawnRouteIdsRef.current.add(s.id);
+          }
+        }
       }
 
       const addMarker = (
@@ -371,7 +523,18 @@ export function ShipmentMap({
         kind: 'origin' | 'destination' | 'current',
         label: string
       ) => {
-        const marker = L.marker([lat, lng], {
+        let startLat = lat;
+        let startLng = lng;
+
+        if (kind === 'current' && !reduceMotion) {
+          const prev = prevCurrentPositionsRef.current.get(s.id);
+          if (prev && coordsDiffer(prev, [lat, lng])) {
+            startLat = prev[0];
+            startLng = prev[1];
+          }
+        }
+
+        const marker = L.marker([startLat, startLng], {
           icon: createMarkerIcon(kind, s.id === selectedId),
           keyboard: false,
         })
@@ -381,6 +544,10 @@ export function ShipmentMap({
             </div>`
           )
           .addTo(map);
+
+        if (kind === 'current' && (startLat !== lat || startLng !== lng)) {
+          stopMarkerAnimsRef.current.push(animateMarkerTo(marker, [lat, lng], 650));
+        }
 
         if (onSelect) {
           marker.on('click', () => onSelect(s.id));
@@ -396,13 +563,20 @@ export function ShipmentMap({
       if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
       const current = resolveDisplayPosition(s);
       if (current) {
+        seenCurrentIds.add(s.id);
         addMarker(
           current[0],
           current[1],
           'current',
           s.currentAddress?.trim() || 'Current position'
         );
+        prevCurrentPositionsRef.current.set(s.id, [current[0], current[1]]);
       }
+    }
+
+    // Drop stale position memory for shipments no longer on the map.
+    for (const id of prevCurrentPositionsRef.current.keys()) {
+      if (!seenCurrentIds.has(id)) prevCurrentPositionsRef.current.delete(id);
     }
 
     if (showPorts) {
@@ -428,10 +602,15 @@ export function ShipmentMap({
         return `${s.id}:${s.progress}:${cur?.[0] ?? ''}:${cur?.[1] ?? ''}:${s.currentAddress ?? ''}`;
       })
       .join('|')}`;
+
+    let fittingBounds = false;
     if (bounds.isValid() && interactive && fitKey !== fittedKeyRef.current) {
       fittedKeyRef.current = fitKey;
 
       const selected = selectedId ? geoShipments.find((s) => s.id === selectedId) : undefined;
+      let targetBounds = bounds;
+      let maxZoom = 6;
+
       if (selected) {
         const selectedBounds = L.latLngBounds([]);
         const extend = (lat: number, lng: number) => {
@@ -444,26 +623,77 @@ export function ShipmentMap({
         const cur = resolveDisplayPosition(selected);
         if (cur) extend(cur[0], cur[1]);
         if (selectedBounds.isValid()) {
-          const hasPinnedCurrent = isValidCoord(selected.currentLat, selected.currentLng);
-          map.fitBounds(selectedBounds, {
-            padding: [56, 56],
-            maxZoom: hasPinnedCurrent ? 12 : 6,
-            animate: !reduceMotion,
-            duration: reduceMotion ? 0 : 0.6,
-          });
-          return;
+          targetBounds = selectedBounds;
+          maxZoom = isValidCoord(selected.currentLat, selected.currentLng) ? 12 : 6;
         }
       }
 
-      map.fitBounds(bounds, {
+      map.fitBounds(targetBounds, {
         padding: [56, 56],
-        maxZoom: 6,
+        maxZoom,
         animate: !reduceMotion,
         duration: reduceMotion ? 0 : 0.6,
       });
+      fittingBounds = !reduceMotion;
+    }
+
+    const flowLine = flowId && !reduceMotion ? routeById.get(flowId) ?? null : null;
+    const activeNeedsDrawIn = flowId != null && pendingDrawIds.has(flowId);
+
+    const beginFlow = (line: L.Polyline) => {
+      stopRouteFlowRef.current?.();
+      stopRouteFlowRef.current = startRouteDashFlow(line);
+    };
+
+    let drawTimeout: number | undefined;
+    let drewRoutes = false;
+    const drawRoutes = () => {
+      if (drewRoutes) return;
+      drewRoutes = true;
+      if (drawTimeout != null) {
+        window.clearTimeout(drawTimeout);
+        drawTimeout = undefined;
+      }
+      map.off('moveend', drawRoutes);
+      for (const item of routesToDrawIn) {
+        const startFlowAfter =
+          flowLine && item.id === flowId ? () => beginFlow(item.line) : undefined;
+        animatePolylineDrawIn(item.line, 800, startFlowAfter);
+      }
+      for (const id of pendingDrawIds) {
+        drawnRouteIdsRef.current.add(id);
+      }
+      pendingDrawIds.clear();
+      routesToDrawIn.length = 0;
+
+      if (flowLine && !activeNeedsDrawIn) {
+        beginFlow(flowLine);
+      }
+    };
+
+    if (routesToDrawIn.length > 0) {
+      if (fittingBounds) {
+        map.once('moveend', drawRoutes);
+        drawTimeout = window.setTimeout(drawRoutes, 700);
+      } else {
+        drawRoutes();
+      }
+    } else if (flowLine) {
+      beginFlow(flowLine);
     }
 
     requestAnimationFrame(() => map.invalidateSize());
+
+    return () => {
+      if (drawTimeout != null) window.clearTimeout(drawTimeout);
+      map.off('moveend', drawRoutes);
+      stopRouteFlowRef.current?.();
+      stopRouteFlowRef.current = null;
+      stopMarkerAnimsRef.current.forEach((stop) => stop());
+      stopMarkerAnimsRef.current = [];
+      // Allow retry if this effect cleaned up before draw-in ran (e.g. Strict Mode).
+      pendingDrawIds.clear();
+    };
   }, [geoShipments, selectedId, onSelect, showPorts, interactive, reduceMotion, mapReady]);
 
   if (!hasGeo) {
@@ -510,10 +740,39 @@ export function ShipmentMap({
           height: 16px;
           background: #4F6DF5;
           box-shadow: 0 0 0 4px rgba(79, 109, 245, 0.35);
+          animation: qv-map-marker-pulse 2.2s ease-out infinite;
         }
         .qv-map-marker--selected {
           outline: 2px solid #fff;
           outline-offset: 2px;
+        }
+        @keyframes qv-map-marker-pulse {
+          0% {
+            box-shadow: 0 0 0 3px rgba(79, 109, 245, 0.45);
+          }
+          70% {
+            box-shadow: 0 0 0 14px rgba(79, 109, 245, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 3px rgba(79, 109, 245, 0);
+          }
+        }
+        @keyframes qv-map-route-flow {
+          to {
+            stroke-dashoffset: calc(var(--qv-flow-cycle, 20px) * -1);
+          }
+        }
+        .qv-map-route--flow {
+          animation: qv-map-route-flow 1.8s linear infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .qv-map-marker--current {
+            animation: none;
+            box-shadow: 0 0 0 4px rgba(79, 109, 245, 0.35);
+          }
+          .qv-map-route--flow {
+            animation: none;
+          }
         }
         .leaflet-container {
           height: 100%;
