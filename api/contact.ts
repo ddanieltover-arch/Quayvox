@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Resend } from 'resend';
 import { z } from 'zod';
-import { isDbConfigured } from './_lib/db';
+import { isServerConfigured, requireAdmin } from './_lib/auth';
 import { handleOptions } from './_lib/http';
+import { sendContactEmails } from './_lib/notify';
+import { isDbConfigured } from './_lib/db';
 import { insertContactMessage } from './_lib/shipments';
 
 const bodySchema = z.object({
@@ -55,10 +56,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Server database is not configured' });
   }
 
-  const resendKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Quayvox <onboarding@resend.dev>';
-  const toEmail = process.env.CONTACT_TO_EMAIL;
-
   try {
     await insertContactMessage({
       name,
@@ -71,27 +68,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Failed to save message' });
   }
 
-  if (resendKey && toEmail) {
-    try {
-      const resend = new Resend(resendKey);
-      await resend.emails.send({
-        from: fromEmail,
-        to: [toEmail],
-        replyTo: email,
-        subject: `Quayvox contact from ${name}`,
-        text: [
-          `Name: ${name}`,
-          `Email: ${email}`,
-          `Company: ${company || '—'}`,
-          '',
-          message,
-        ].join('\n'),
-      });
-    } catch (err) {
-      console.error('resend contact', err);
-      return res.status(200).json({ ok: true, emailSent: false });
-    }
-  }
+  const { customerSent, adminSent } = await sendContactEmails({
+    name,
+    email,
+    company: company || null,
+    message,
+  });
 
-  return res.status(200).json({ ok: true, emailSent: Boolean(resendKey && toEmail) });
+  return res.status(200).json({
+    ok: true,
+    emailSent: adminSent,
+    customerConfirmationSent: customerSent,
+  });
 }

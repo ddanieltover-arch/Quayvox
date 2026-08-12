@@ -2,8 +2,10 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import { isServerConfigured, requireAdmin } from '../_lib/auth';
 import { handleOptions } from '../_lib/http';
+import { sendShipmentUpdateEmails } from '../_lib/notify';
 import {
   deleteShipment,
+  getShipmentById,
   insertEvent,
   insertShipmentPosition,
   updateShipment,
@@ -42,6 +44,7 @@ const patchSchema = z
     position_label: z.string().trim().max(200).nullable().optional(),
     eventMessage: z.string().optional(),
     eventLocation: z.string().optional(),
+    notifyCustomer: z.boolean().optional(),
   })
   .strict();
 
@@ -73,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Invalid update payload', details: parsed.error.flatten() });
     }
 
-    const { eventMessage, eventLocation, position_label, ...patch } = parsed.data;
+    const { eventMessage, eventLocation, position_label, notifyCustomer, ...patch } = parsed.data;
 
     const hasCurrentLat = Object.prototype.hasOwnProperty.call(parsed.data, 'current_lat');
     const hasCurrentLng = Object.prototype.hasOwnProperty.call(parsed.data, 'current_lng');
@@ -90,6 +93,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
+      const before = await getShipmentById(id);
+      if (!before) return res.status(404).json({ error: 'Shipment not found' });
+
       const row = await updateShipment(id, patch);
       if (!row) return res.status(404).json({ error: 'Shipment not found' });
 
@@ -118,7 +124,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      return res.status(200).json({ shipment: row });
+      const emailResult = await sendShipmentUpdateEmails(
+        before as Record<string, unknown>,
+        row as Record<string, unknown>,
+        patch,
+        {
+          notifyCustomer: notifyCustomer ?? false,
+          eventMessage,
+          eventLocation,
+          positionLabel: position_label,
+        }
+      );
+
+      return res.status(200).json({
+        shipment: row,
+        emails: {
+          customerSent: emailResult.customerSent,
+          adminSent: emailResult.adminSent,
+          contexts: emailResult.contexts,
+        },
+      });
     } catch (err) {
       console.error('update shipment', err);
       return res.status(500).json({ error: 'Failed to update shipment' });

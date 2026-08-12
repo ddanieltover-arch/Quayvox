@@ -1,17 +1,26 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Resend } from 'resend';
 import { z } from 'zod';
 import { isServerConfigured, requireAdmin } from './_lib/auth';
 import { handleOptions } from './_lib/http';
+import { getShipmentByTracking } from './_lib/shipments';
+import { adminNotifyEmail, sendEmailSafe } from './_lib/mail';
+import { rowToShipmentEmailData } from './_lib/shipmentNotifications';
+import {
+  AdminShipmentEmail,
+  CustomerShipmentEmail,
+  adminShipmentSubject,
+  customerShipmentSubject,
+} from '../emails/templates/ShipmentEmails';
+import type { ShipmentEmailContext } from '../emails/types';
 
 const bodySchema = z.object({
   trackingNumber: z.string().trim().min(3).max(64),
-  status: z.string().trim().min(1).max(64),
-  customerEmail: z.string().trim().email(),
-  origin: z.string().optional(),
-  destination: z.string().optional(),
+  status: z.string().trim().min(1).max(64).optional(),
+  customerEmail: z.string().trim().email().optional(),
+  notifyCustomer: z.boolean().optional(),
 });
 
+/** Legacy endpoint — prefer PATCH /api/shipments/:id which sends emails automatically. */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleOptions(req, res, 'POST, OPTIONS')) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -27,32 +36,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
 
-  const { trackingNumber, status, customerEmail, origin, destination } = parsed.data;
-  const resendKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Quayvox <onboarding@resend.dev>';
-
-  if (!resendKey) {
-    return res.status(200).json({ ok: true, emailSent: false, reason: 'RESEND_API_KEY missing' });
+  const row = await getShipmentByTracking(parsed.data.trackingNumber);
+  if (!row) {
+    return res.status(404).json({ error: 'Shipment not found' });
   }
 
-  try {
-    const resend = new Resend(resendKey);
-    await resend.emails.send({
-      from: fromEmail,
-      to: [customerEmail],
-      subject: `Shipment ${trackingNumber} is now ${status}`,
-      text: [
-        `Your shipment ${trackingNumber} status is now: ${status}.`,
-        origin && destination ? `Route: ${origin} → ${destination}` : '',
-        '',
-        `Track online: ${process.env.PUBLIC_APP_URL || 'https://www.quayvox.com'}/track/${encodeURIComponent(trackingNumber)}`,
-      ]
-        .filter(Boolean)
-        .join('\n'),
+  const shipment = rowToShipmentEmailData({
+    ...row,
+    customer_email: parsed.data.customerEmail ?? row.customer_email,
+    status: parsed.data.status ?? row.status,
+  });
+
+  const ctx: ShipmentEmailContext = {
+    shipment,
+    kind: 'status',
+    eventMessage: parsed.data.status ? `Status updated to ${parsed.data.status}` : undefined,
+  };
+
+  const admin = adminNotifyEmail();
+  let customerSent = false;
+  let adminSent = false;
+
+  if ((parsed.data.notifyCustomer ?? true) && shipment.customerEmail) {
+    const result = await sendEmailSafe({
+      to: shipment.customerEmail,
+      subject: customerShipmentSubject(ctx),
+      react: CustomerShipmentEmail({ ctx }),
     });
-    return res.status(200).json({ ok: true, emailSent: true });
-  } catch (err) {
-    console.error('notify-shipment', err);
-    return res.status(500).json({ error: 'Failed to send email' });
+    customerSent = result.emailSent;
   }
+
+  if (admin) {
+    const result = await sendEmailSafe({
+      to: admin,
+      subject: adminShipmentSubject(ctx),
+      react: AdminShipmentEmail({ ctx }),
+    });
+    adminSent = result.emailSent;
+  }
+
+  return res.status(200).json({
+    ok: true,
+    emailSent: customerSent || adminSent,
+    emails: { customerSent, adminSent },
+  });
 }

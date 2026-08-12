@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   LngLatBounds,
   Map as MapLibreMap,
@@ -8,12 +8,9 @@ import {
   type GeoJSONSource,
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { interpolateCoords, type GeoCoord } from '@/lib/geoPorts';
+import { DEFAULT_MAP_STYLE, MAP_STYLE_URLS } from '@/lib/mapConfig';
+import { interpolateCoords, lookupPortCoords, type GeoCoord } from '@/lib/geoPorts';
 import type { ShipmentPosition } from '@/lib/shipments';
-
-const DEFAULT_STYLE =
-  (import.meta.env.VITE_MAP_STYLE_URL as string | undefined)?.trim() ||
-  'https://tiles.openfreemap.org/styles/dark';
 
 const ROUTE_SOURCE = 'qv-route';
 const ROUTE_LAYER = 'qv-route-line';
@@ -36,6 +33,8 @@ export interface MapShipmentGeo {
   trackingNumber: string;
   status: string;
   progress: number;
+  origin?: string;
+  destination?: string;
   originLat?: number | null;
   originLng?: number | null;
   destinationLat?: number | null;
@@ -51,7 +50,6 @@ interface ShipmentMapProps {
   onSelect?: (id: string) => void;
   showPorts?: boolean;
   className?: string;
-  /** When true, fit bounds only on first load / selection change, not every poll. */
   interactive?: boolean;
 }
 
@@ -66,29 +64,42 @@ function isValidCoord(lat: number | null | undefined, lng: number | null | undef
   );
 }
 
+function resolveOriginCoord(s: MapShipmentGeo): GeoCoord | null {
+  if (isValidCoord(s.originLat, s.originLng)) {
+    return [s.originLat as number, s.originLng as number];
+  }
+  if (s.origin) {
+    const lookup = lookupPortCoords(s.origin);
+    if (lookup) return lookup;
+  }
+  return null;
+}
+
+function resolveDestinationCoord(s: MapShipmentGeo): GeoCoord | null {
+  if (isValidCoord(s.destinationLat, s.destinationLng)) {
+    return [s.destinationLat as number, s.destinationLng as number];
+  }
+  if (s.destination) {
+    const lookup = lookupPortCoords(s.destination);
+    if (lookup) return lookup;
+  }
+  return null;
+}
+
 export function resolveDisplayPosition(s: MapShipmentGeo): GeoCoord | null {
   if (isValidCoord(s.currentLat, s.currentLng)) {
     return [s.currentLat as number, s.currentLng as number];
   }
-  if (
-    isValidCoord(s.originLat, s.originLng) &&
-    isValidCoord(s.destinationLat, s.destinationLng)
-  ) {
-    return interpolateCoords(
-      [s.originLat as number, s.originLng as number],
-      [s.destinationLat as number, s.destinationLng as number],
-      s.progress
-    );
+  const origin = resolveOriginCoord(s);
+  const destination = resolveDestinationCoord(s);
+  if (origin && destination) {
+    return interpolateCoords(origin, destination, s.progress);
   }
   return null;
 }
 
 function shipmentHasGeo(s: MapShipmentGeo): boolean {
-  return (
-    isValidCoord(s.originLat, s.originLng) ||
-    isValidCoord(s.destinationLat, s.destinationLng) ||
-    resolveDisplayPosition(s) != null
-  );
+  return resolveOriginCoord(s) != null || resolveDestinationCoord(s) != null || resolveDisplayPosition(s) != null;
 }
 
 function buildRouteGeoJson(shipments: MapShipmentGeo[]): MapFeatureCollection {
@@ -96,9 +107,10 @@ function buildRouteGeoJson(shipments: MapShipmentGeo[]): MapFeatureCollection {
 
   for (const s of shipments) {
     const coords: [number, number][] = [];
-    if (isValidCoord(s.originLat, s.originLng)) {
-      coords.push([s.originLng as number, s.originLat as number]);
-    }
+    const origin = resolveOriginCoord(s);
+    const destination = resolveDestinationCoord(s);
+
+    if (origin) coords.push([origin[1], origin[0]]);
     const trail = (s.positions ?? []).filter((p) => isValidCoord(p.lat, p.lng));
     for (const p of trail) {
       coords.push([p.lng, p.lat]);
@@ -112,9 +124,7 @@ function buildRouteGeoJson(shipments: MapShipmentGeo[]): MapFeatureCollection {
         coords.push([current[1], current[0]]);
       }
     }
-    if (isValidCoord(s.destinationLat, s.destinationLng)) {
-      coords.push([s.destinationLng as number, s.destinationLat as number]);
-    }
+    if (destination) coords.push([destination[1], destination[0]]);
     if (coords.length >= 2) {
       features.push({
         type: 'Feature',
@@ -138,6 +148,25 @@ function buildPortsGeoJson(ports: Record<string, GeoCoord>): MapFeatureCollectio
   };
 }
 
+function ensureRouteLayer(map: MapLibreMap) {
+  if (!map.getSource(ROUTE_SOURCE)) {
+    map.addSource(ROUTE_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    map.addLayer({
+      id: ROUTE_LAYER,
+      type: 'line',
+      source: ROUTE_SOURCE,
+      paint: {
+        'line-color': '#4F6DF5',
+        'line-width': 2.5,
+        'line-opacity': 0.85,
+      },
+    });
+  }
+}
+
 export function ShipmentMap({
   shipments,
   selectedId,
@@ -150,6 +179,10 @@ export function ShipmentMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const fittedKeyRef = useRef<string>('');
+  const styleIndexRef = useRef(0);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+
   const reduceMotion = useMemo(
     () =>
       typeof window !== 'undefined' &&
@@ -158,56 +191,88 @@ export function ShipmentMap({
   );
 
   const geoShipments = useMemo(() => shipments.filter(shipmentHasGeo), [shipments]);
+  const hasGeo = geoShipments.length > 0;
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!hasGeo || !containerRef.current) return;
 
-    const map = new MapLibreMap({
-      container: containerRef.current,
-      style: DEFAULT_STYLE,
-      center: [10, 20],
-      zoom: 1.4,
-      cooperativeGestures: true,
-    });
+    let disposed = false;
+    let resizeObserver: ResizeObserver | null = null;
+    let map: MapLibreMap | null = null;
 
-    map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
-    mapRef.current = map;
+    const tryStyle = (index: number) => {
+      if (disposed || !containerRef.current) return;
 
-    map.on('load', () => {
-      if (!map.getSource(ROUTE_SOURCE)) {
-        map.addSource(ROUTE_SOURCE, {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        });
-        map.addLayer({
-          id: ROUTE_LAYER,
-          type: 'line',
-          source: ROUTE_SOURCE,
-          paint: {
-            'line-color': '#4F6DF5',
-            'line-width': 2.5,
-            'line-opacity': 0.85,
-          },
-        });
+      const styleUrl = MAP_STYLE_URLS[index] ?? DEFAULT_MAP_STYLE;
+      styleIndexRef.current = index;
+
+      if (map) {
+        map.remove();
+        map = null;
+        mapRef.current = null;
       }
-    });
+
+      map = new MapLibreMap({
+        container: containerRef.current,
+        style: styleUrl,
+        center: [10, 20],
+        zoom: 1.4,
+        cooperativeGestures: true,
+      });
+
+      mapRef.current = map;
+      map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+
+      map.on('error', (event) => {
+        const message = event.error?.message ?? 'Map failed to load';
+        if (index + 1 < MAP_STYLE_URLS.length) {
+          tryStyle(index + 1);
+          return;
+        }
+        setMapError(message);
+      });
+
+      map.on('load', () => {
+        if (disposed || !map) return;
+        ensureRouteLayer(map);
+        setMapError(null);
+        setMapReady(true);
+        requestAnimationFrame(() => map?.resize());
+      });
+
+      resizeObserver = new ResizeObserver(() => {
+        map?.resize();
+      });
+      resizeObserver.observe(containerRef.current);
+    };
+
+    setMapReady(false);
+    setMapError(null);
+    tryStyle(styleIndexRef.current);
 
     return () => {
+      disposed = true;
+      resizeObserver?.disconnect();
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      map.remove();
+      map?.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
-  }, []);
+  }, [hasGeo]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
 
     const apply = () => {
+      if (!map.isStyleLoaded()) return;
+
       const routeSource = map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined;
       if (routeSource) {
         routeSource.setData(buildRouteGeoJson(geoShipments) as never);
+      } else {
+        ensureRouteLayer(map);
       }
 
       if (showPorts) {
@@ -280,21 +345,12 @@ export function ShipmentMap({
           hasBounds = true;
         };
 
-        if (isValidCoord(s.originLat, s.originLng)) {
-          addMarker(s.originLat as number, s.originLng as number, 'origin', 'Origin');
-        }
-        if (isValidCoord(s.destinationLat, s.destinationLng)) {
-          addMarker(
-            s.destinationLat as number,
-            s.destinationLng as number,
-            'destination',
-            'Destination'
-          );
-        }
+        const origin = resolveOriginCoord(s);
+        const destination = resolveDestinationCoord(s);
+        if (origin) addMarker(origin[0], origin[1], 'origin', 'Origin');
+        if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
         const current = resolveDisplayPosition(s);
-        if (current) {
-          addMarker(current[0], current[1], 'current', 'Current position');
-        }
+        if (current) addMarker(current[0], current[1], 'current', 'Current position');
       }
 
       const fitKey = `${selectedId ?? 'all'}:${geoShipments.map((s) => s.id).join(',')}`;
@@ -310,12 +366,10 @@ export function ShipmentMap({
             selectedBounds.extend([lng, lat]);
             selectedHas = true;
           };
-          if (isValidCoord(selected.originLat, selected.originLng)) {
-            extend(selected.originLat as number, selected.originLng as number);
-          }
-          if (isValidCoord(selected.destinationLat, selected.destinationLng)) {
-            extend(selected.destinationLat as number, selected.destinationLng as number);
-          }
+          const o = resolveOriginCoord(selected);
+          const d = resolveDestinationCoord(selected);
+          if (o) extend(o[0], o[1]);
+          if (d) extend(d[0], d[1]);
           const cur = resolveDisplayPosition(selected);
           if (cur) extend(cur[0], cur[1]);
           if (selectedHas) {
@@ -333,16 +387,18 @@ export function ShipmentMap({
           duration: reduceMotion ? 0 : 600,
         });
       }
+
+      requestAnimationFrame(() => map.resize());
     };
 
     if (map.isStyleLoaded()) apply();
     else map.once('load', apply);
-  }, [geoShipments, selectedId, onSelect, showPorts, interactive, reduceMotion]);
+  }, [geoShipments, selectedId, onSelect, showPorts, interactive, reduceMotion, mapReady]);
 
-  if (geoShipments.length === 0) {
+  if (!hasGeo) {
     return (
       <div
-        className={`flex items-center justify-center rounded-xl border border-white/10 bg-navy-900/60 text-sm text-text-secondary ${className}`}
+        className={`flex items-center justify-center rounded-xl border border-white/10 bg-navy-900/60 text-sm text-text-secondary min-h-[16rem] ${className}`}
       >
         Location updates when the shipment is scanned
       </div>
@@ -350,8 +406,20 @@ export function ShipmentMap({
   }
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border border-white/10 ${className}`}>
-      <div ref={containerRef} className="absolute inset-0" />
+    <div
+      className={`relative overflow-hidden rounded-xl border border-white/10 min-h-[16rem] ${className}`}
+    >
+      <div ref={containerRef} className="h-full w-full min-h-[inherit]" />
+      {!mapReady && !mapError && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-navy-900/40 text-xs text-text-secondary">
+          Loading map…
+        </div>
+      )}
+      {mapError && (
+        <div className="absolute inset-x-0 bottom-0 bg-red-950/80 px-3 py-2 text-xs text-red-200">
+          {mapError}
+        </div>
+      )}
       <style>{`
         .qv-map-marker {
           width: 12px;
@@ -374,6 +442,8 @@ export function ShipmentMap({
           outline-offset: 2px;
         }
         .maplibregl-popup-content { border-radius: 8px; padding: 8px 10px; }
+        .maplibregl-map { height: 100%; width: 100%; }
+        .maplibregl-canvas { width: 100% !important; height: 100% !important; }
       `}</style>
     </div>
   );

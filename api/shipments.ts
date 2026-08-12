@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import { isServerConfigured, requireAdmin } from './_lib/auth';
 import { handleOptions } from './_lib/http';
+import { sendShipmentCreatedEmails } from './_lib/notify';
 import { insertEvent, insertShipment, listShipments } from './_lib/shipments';
 
 const nullableNumber = z.number().finite().nullable().optional();
@@ -78,7 +79,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: 'Shipment created',
       });
 
-      return res.status(201).json({ shipment: row });
+      const emailResult = await sendShipmentCreatedEmails(row as Record<string, unknown>);
+
+      return res.status(201).json({
+        shipment: row,
+        emails: {
+          customerSent: emailResult.customerSent,
+          adminSent: emailResult.adminSent,
+        },
+      });
     } catch (err) {
       console.error('create shipment', err);
       return res.status(500).json({ error: 'Failed to create shipment' });

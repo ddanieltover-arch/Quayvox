@@ -91,6 +91,8 @@ const LiveMap = () => {
         trackingNumber: s.trackingNumber,
         status: s.status,
         progress: s.progress,
+        origin: s.origin,
+        destination: s.destination,
         originLat: s.originLat,
         originLng: s.originLng,
         destinationLat: s.destinationLat,
@@ -190,7 +192,7 @@ const LiveMap = () => {
             selectedId={selectedId}
             onSelect={setSelectedId}
             showPorts={showPorts}
-            className="flex-1 min-h-[320px]"
+            className="h-[min(60vh,520px)] min-h-[320px]"
           />
           {selected && (
             <div className="card-surface p-4 flex flex-wrap gap-4 text-sm">

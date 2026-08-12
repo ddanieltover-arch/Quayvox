@@ -155,6 +155,7 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...row,
+            position_label: options?.eventLocation ?? updates.positionLabel ?? undefined,
             eventMessage:
               options?.eventMessage ||
               (statusChanged
@@ -163,6 +164,7 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   ? 'Location updated'
                   : undefined),
             eventLocation: options?.eventLocation ?? updates.positionLabel ?? undefined,
+            notifyCustomer: options?.notifyCustomer ?? false,
           }),
         });
         const data = (await res.json()) as { shipment?: ShipmentRow; error?: string };
@@ -173,25 +175,6 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         const mapped = mapShipmentRow(data.shipment);
         setShipments((prev) => prev.map((s) => (s.id === id ? mapped : s)));
-
-        if (options?.notifyCustomer && mapped.customerEmail && statusChanged) {
-          try {
-            await fetch('/api/notify-shipment', {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                trackingNumber: mapped.trackingNumber,
-                status: mapped.status,
-                customerEmail: mapped.customerEmail,
-                origin: mapped.origin,
-                destination: mapped.destination,
-              }),
-            });
-          } catch (err) {
-            console.warn('Status email failed', err);
-          }
-        }
 
         addNotification({
           title: 'Shipment Updated',

@@ -215,6 +215,8 @@ const Shipments = () => {
     const positionChanged =
       nextCurrentLat !== (editing.currentLat ?? null) ||
       nextCurrentLng !== (editing.currentLng ?? null);
+    const statusChanged = editForm.status !== editing.status;
+    const etaChanged = editForm.eta !== editing.eta;
 
     if (positionChanged) {
       updates.currentLat = nextCurrentLat;
@@ -224,7 +226,13 @@ const Shipments = () => {
 
     await updateShipment(editing.id, updates, {
       notifyCustomer: editForm.notifyCustomer,
-      eventMessage: `Status updated to ${editForm.status}`,
+      eventMessage: statusChanged
+        ? `Status updated to ${editForm.status}`
+        : positionChanged
+          ? 'Location updated'
+          : etaChanged
+            ? 'ETA updated'
+            : undefined,
       eventLocation: editForm.positionLabel.trim() || undefined,
     });
     setSaving(false);

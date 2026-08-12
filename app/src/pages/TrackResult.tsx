@@ -30,7 +30,9 @@ const TrackResult = () => {
     (shipment.originLat != null ||
       shipment.destinationLat != null ||
       shipment.currentLat != null ||
-      positions.length > 0);
+      positions.length > 0 ||
+      Boolean(shipment.origin) ||
+      Boolean(shipment.destination));
 
   return (
     <div className="pt-20 lg:pt-24 px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-3xl mx-auto pb-[max(2rem,env(safe-area-inset-bottom))]">
@@ -169,6 +171,8 @@ const TrackResult = () => {
                     trackingNumber: shipment.trackingNumber,
                     status: shipment.status,
                     progress: shipment.progress,
+                    origin: shipment.origin,
+                    destination: shipment.destination,
                     originLat: shipment.originLat,
                     originLng: shipment.originLng,
                     destinationLat: shipment.destinationLat,
