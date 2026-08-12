@@ -1,17 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
-import { isServerConfigured, requireAdmin } from './_lib/auth';
-import { handleOptions } from './_lib/http';
-import { getShipmentByTracking } from './_lib/shipments';
-import { adminNotifyEmail, sendEmailSafe } from './_lib/mail';
-import { rowToShipmentEmailData } from './_lib/shipmentNotifications';
 import {
   AdminShipmentEmail,
   CustomerShipmentEmail,
   adminShipmentSubject,
   customerShipmentSubject,
-} from '../emails/templates/ShipmentEmails';
-import type { ShipmentEmailContext } from '../emails/types';
+} from '../../../emails/templates/ShipmentEmails';
+import type { ShipmentEmailContext } from '../../../emails/types';
+import { isServerConfigured, requireAdmin } from '../auth';
+import { handleOptions } from '../http';
+import { adminNotifyEmail, sendEmailSafe } from '../mail';
+import { getShipmentByTracking } from '../shipments';
+import { rowToShipmentEmailData } from '../shipmentNotifications';
 
 const bodySchema = z.object({
   trackingNumber: z.string().trim().min(3).max(64),
@@ -21,24 +21,30 @@ const bodySchema = z.object({
 });
 
 /** Legacy endpoint — prefer PATCH /api/shipments/:id which sends emails automatically. */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export async function handleNotifyShipment(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (handleOptions(req, res, 'POST, OPTIONS')) return;
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
 
   if (!isServerConfigured()) {
-    return res.status(503).json({ error: 'Server is not configured' });
+    res.status(503).json({ error: 'Server is not configured' });
+    return;
   }
 
   if (!requireAdmin(req, res)) return;
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: 'Invalid payload' });
+    res.status(400).json({ error: 'Invalid payload' });
+    return;
   }
 
   const row = await getShipmentByTracking(parsed.data.trackingNumber);
   if (!row) {
-    return res.status(404).json({ error: 'Shipment not found' });
+    res.status(404).json({ error: 'Shipment not found' });
+    return;
   }
 
   const shipment = rowToShipmentEmailData({
@@ -75,7 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     adminSent = result.emailSent;
   }
 
-  return res.status(200).json({
+  res.status(200).json({
     ok: true,
     emailSent: customerSent || adminSent,
     emails: { customerSent, adminSent },

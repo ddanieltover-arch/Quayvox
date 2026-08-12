@@ -12,6 +12,7 @@ interface AuthContextType {
   isAdmin: boolean;
   loading: boolean;
   configured: boolean;
+  apiError: string | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -24,29 +25,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const refreshProfile = useCallback(async () => {
     try {
       const res = await fetch('/api/auth/me', { credentials: 'include' });
-      const data = (await res.json()) as {
+      let data: {
         configured?: boolean;
         user?: AuthUser | null;
         role?: UserRole | null;
-      };
+      } = {};
 
-      if (res.status === 503) {
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        data = {};
+      }
+
+      if (res.status >= 500) {
         setConfigured(false);
+        setApiError('Admin API is unavailable. Check Vercel function logs and redeploy.');
         setUser(null);
         setRole(null);
         return;
       }
 
+      if (res.status === 503) {
+        setConfigured(false);
+        setApiError(null);
+        setUser(null);
+        setRole(null);
+        return;
+      }
+
+      setApiError(null);
       setConfigured(data.configured !== false);
       setUser(data.user ?? null);
       setRole(data.role ?? null);
     } catch {
-      // API unreachable (e.g. vite without vercel dev)
       setConfigured(false);
+      setApiError('Cannot reach admin API. Run vercel dev from the repo root (local) or check Vercel deploy.');
       setUser(null);
       setRole(null);
     }
@@ -78,8 +96,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role?: UserRole;
       };
 
+      if (res.status >= 500) {
+        setConfigured(false);
+        setApiError('Admin API is unavailable. Check Vercel function logs and redeploy.');
+        return { error: 'Admin API is unavailable. Check Vercel function logs and redeploy.' };
+      }
+
       if (res.status === 503) {
         setConfigured(false);
+        setApiError(null);
         return { error: data.error || 'Auth is not configured on the server.' };
       }
 
@@ -87,12 +112,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: data.error || 'Sign in failed' };
       }
 
+      setApiError(null);
       setConfigured(true);
       setUser(data.user ?? { email });
       setRole(data.role ?? 'admin');
       return { error: null };
     } catch {
       setConfigured(false);
+      setApiError('Cannot reach admin API.');
       return {
         error: 'Cannot reach auth API. Run `vercel dev` from the repo root (proxied via Vite).',
       };
@@ -116,11 +143,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAdmin: role === 'admin',
       loading,
       configured,
+      apiError,
       signIn,
       signOut,
       refreshProfile,
     }),
-    [user, role, loading, configured, signIn, signOut, refreshProfile]
+    [user, role, loading, configured, apiError, signIn, signOut, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
