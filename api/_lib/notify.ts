@@ -67,24 +67,51 @@ export async function sendShipmentUpdateEmails(
     eventLocation?: string | null;
     positionLabel?: string | null;
   } = {}
-): Promise<{ customerSent: boolean; adminSent: boolean; contexts: number }> {
+): Promise<{
+  customerSent: boolean;
+  adminSent: boolean;
+  contexts: number;
+  partyEmails: string[];
+  adminEmail: string | null;
+}> {
   const shipment = rowToShipmentEmailData(after, { positionLabel: options.positionLabel });
-  const changes = detectShipmentChanges(before, after, patch, options.eventMessage);
+  const fallbackMessage =
+    options.eventMessage?.trim() ||
+    (Object.prototype.hasOwnProperty.call(patch, 'status')
+      ? `Status updated to ${shipment.status}`
+      : 'Shipment updated');
+
+  const changes = detectShipmentChanges(before, after, patch, fallbackMessage);
   const contexts = buildContexts(
     shipment,
     changes,
-    options.eventMessage,
+    fallbackMessage,
     options.eventLocation
   );
 
-  if (!contexts.length) {
-    return { customerSent: false, adminSent: false, contexts: 0 };
+  const partyEmails = getPartyNotificationEmails(shipment);
+  const admin = adminNotifyEmail();
+
+  if (!partyEmails.length) {
+    console.warn(
+      'shipment update emails: no sender/receiver emails on file',
+      shipment.trackingNumber
+    );
+  }
+  if (!admin) {
+    console.warn('shipment update emails: ADMIN_EMAIL / CONTACT_TO_EMAIL not configured');
   }
 
   const result = await dispatchShipmentContexts(contexts, {
     notifyCustomer: options.notifyCustomer ?? true,
   });
-  return { ...result, contexts: contexts.length };
+
+  return {
+    ...result,
+    contexts: contexts.length,
+    partyEmails,
+    adminEmail: admin,
+  };
 }
 
 async function dispatchShipmentContexts(
@@ -96,7 +123,9 @@ async function dispatchShipmentContexts(
   let adminSent = false;
 
   for (const ctx of contexts) {
-    for (const email of getPartyNotificationEmails(ctx.shipment)) {
+    const partyEmails = getPartyNotificationEmails(ctx.shipment);
+
+    for (const email of partyEmails) {
       if (shouldNotifyCustomer(ctx, options.notifyCustomer, email)) {
         const result = await sendEmailSafe(
           {

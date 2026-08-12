@@ -1684,17 +1684,23 @@ function detectShipmentChanges(before, after, patch, eventMessage) {
   const prevLng = before.current_lng != null ? Number(before.current_lng) : null;
   const nextLat = after.current_lat != null ? Number(after.current_lat) : null;
   const nextLng = after.current_lng != null ? Number(after.current_lng) : null;
-  const coordsChanged = (Object.prototype.hasOwnProperty.call(patch, "current_lat") || Object.prototype.hasOwnProperty.call(patch, "current_lng")) && prevLat !== nextLat && prevLng !== nextLng && nextLat != null && nextLng != null;
-  const addressChanged = Object.prototype.hasOwnProperty.call(patch, "current_address") && String(before.current_address ?? "").trim() !== String(after.current_address ?? "").trim();
+  const addressInPatch = Object.prototype.hasOwnProperty.call(patch, "current_address");
+  const coordsInPatch = Object.prototype.hasOwnProperty.call(patch, "current_lat") || Object.prototype.hasOwnProperty.call(patch, "current_lng");
+  const coordsChanged = nextLat != null && nextLng != null && (prevLat !== nextLat || prevLng !== nextLng) && (coordsInPatch || addressInPatch);
+  const addressChanged = addressInPatch && String(before.current_address ?? "").trim() !== String(after.current_address ?? "").trim();
   const positionChanged = coordsChanged || addressChanged;
   const prevEta = formatEmailDate(before.eta);
   const nextEta = formatEmailDate(after.eta);
   const etaChanged = Object.prototype.hasOwnProperty.call(patch, "eta") && prevEta !== nextEta;
-  const timelineOnly = Boolean(eventMessage) && !statusChanged && !positionChanged && !etaChanged;
+  const prevProgress = Number(before.progress) || 0;
+  const nextProgress = Number(after.progress) || 0;
+  const progressChanged = Object.prototype.hasOwnProperty.call(patch, "progress") && prevProgress !== nextProgress;
+  const timelineOnly = Boolean(eventMessage) && !statusChanged && !positionChanged && !etaChanged && !progressChanged;
   return {
     statusChanged,
     positionChanged,
     etaChanged,
+    progressChanged,
     timelineOnly,
     previousStatus: statusChanged ? prevStatus : void 0,
     previousEta: etaChanged ? prevEta : void 0
@@ -1728,11 +1734,27 @@ function buildContexts(shipment, changes, eventMessage, eventLocation) {
       eventLocation
     });
   }
+  if (changes.progressChanged && !changes.statusChanged) {
+    contexts.push({
+      shipment,
+      kind: "timeline",
+      eventMessage: eventMessage || `Progress updated to ${shipment.progress}%`,
+      eventLocation
+    });
+  }
   if (changes.timelineOnly) {
     contexts.push({
       shipment,
       kind: "timeline",
       eventMessage,
+      eventLocation
+    });
+  }
+  if (!contexts.length) {
+    contexts.push({
+      shipment,
+      kind: "timeline",
+      eventMessage: eventMessage || "Shipment updated",
       eventLocation
     });
   }
@@ -1742,7 +1764,7 @@ var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function getPartyNotificationEmails(shipment) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const raw of [shipment.senderEmail, shipment.receiverEmail]) {
+  for (const raw of [shipment.senderEmail, shipment.receiverEmail, shipment.customerEmail]) {
     const email = raw?.trim();
     if (!email || !EMAIL_RE.test(email)) continue;
     const key = email.toLowerCase();
@@ -1752,8 +1774,8 @@ function getPartyNotificationEmails(shipment) {
   }
   return out;
 }
-function shouldNotifyCustomer(_ctx, _notifyCustomer, _customerEmail) {
-  return true;
+function shouldNotifyCustomer(_ctx, notifyCustomer, _customerEmail) {
+  return notifyCustomer !== false;
 }
 function shouldNotifyAdmin(_ctx) {
   return true;
@@ -1789,27 +1811,42 @@ async function sendShipmentCreatedEmails(row) {
 }
 async function sendShipmentUpdateEmails(before, after, patch, options = {}) {
   const shipment = rowToShipmentEmailData(after, { positionLabel: options.positionLabel });
-  const changes = detectShipmentChanges(before, after, patch, options.eventMessage);
+  const fallbackMessage = options.eventMessage?.trim() || (Object.prototype.hasOwnProperty.call(patch, "status") ? `Status updated to ${shipment.status}` : "Shipment updated");
+  const changes = detectShipmentChanges(before, after, patch, fallbackMessage);
   const contexts = buildContexts(
     shipment,
     changes,
-    options.eventMessage,
+    fallbackMessage,
     options.eventLocation
   );
-  if (!contexts.length) {
-    return { customerSent: false, adminSent: false, contexts: 0 };
+  const partyEmails = getPartyNotificationEmails(shipment);
+  const admin = adminNotifyEmail();
+  if (!partyEmails.length) {
+    console.warn(
+      "shipment update emails: no sender/receiver emails on file",
+      shipment.trackingNumber
+    );
+  }
+  if (!admin) {
+    console.warn("shipment update emails: ADMIN_EMAIL / CONTACT_TO_EMAIL not configured");
   }
   const result = await dispatchShipmentContexts(contexts, {
     notifyCustomer: options.notifyCustomer ?? true
   });
-  return { ...result, contexts: contexts.length };
+  return {
+    ...result,
+    contexts: contexts.length,
+    partyEmails,
+    adminEmail: admin
+  };
 }
 async function dispatchShipmentContexts(contexts, options) {
   const admin = adminNotifyEmail();
   let customerSent = false;
   let adminSent = false;
   for (const ctx of contexts) {
-    for (const email of getPartyNotificationEmails(ctx.shipment)) {
+    const partyEmails = getPartyNotificationEmails(ctx.shipment);
+    for (const email of partyEmails) {
       if (shouldNotifyCustomer(ctx, options.notifyCustomer, email)) {
         const result = await sendEmailSafe(
           {
@@ -2824,8 +2861,8 @@ async function handleShipmentById(req, res, id) {
         patch,
         {
           notifyCustomer: true,
-          eventMessage,
-          eventLocation,
+          eventMessage: eventMessage?.trim() || (parsed.data.status ? `Status updated to ${String(row.status)}` : "Shipment updated"),
+          eventLocation: eventLocation || position_label || (typeof row.current_address === "string" ? row.current_address : null),
           positionLabel: position_label
         }
       );
@@ -2834,7 +2871,9 @@ async function handleShipmentById(req, res, id) {
         emails: {
           customerSent: emailResult.customerSent,
           adminSent: emailResult.adminSent,
-          contexts: emailResult.contexts
+          contexts: emailResult.contexts,
+          partyEmails: emailResult.partyEmails,
+          adminEmail: emailResult.adminEmail
         }
       });
     } catch (err) {

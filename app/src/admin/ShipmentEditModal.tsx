@@ -286,7 +286,7 @@ export function ShipmentEditModal({ shipment, onClose }: ShipmentEditModalProps)
               className={`${fieldClass} resize-y`}
             />
             <p className="text-xs text-text-secondary">
-              Sender and receiver are emailed automatically when their email is on file.
+              Every save emails admin, sender, and receiver when emails are on file.
             </p>
           </section>
 

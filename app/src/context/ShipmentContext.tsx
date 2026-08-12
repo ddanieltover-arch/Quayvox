@@ -169,7 +169,15 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             notifyCustomer: true,
           }),
         });
-        const data = (await res.json()) as { shipment?: ShipmentRow; error?: string };
+        const data = (await res.json()) as {
+          shipment?: ShipmentRow;
+          error?: string;
+          emails?: {
+            customerSent?: boolean;
+            adminSent?: boolean;
+            partyEmails?: string[];
+          };
+        };
         if (!res.ok || !data.shipment) {
           toast.error(data.error || 'Failed to update shipment');
           return false;
@@ -194,6 +202,19 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         } else {
           toast.success('Shipment updated');
         }
+
+        const partyCount = data.emails?.partyEmails?.length ?? 0;
+        if (data.emails?.customerSent || data.emails?.adminSent) {
+          const parts: string[] = [];
+          if (data.emails.customerSent) {
+            parts.push(partyCount > 1 ? 'sender & receiver' : 'customer');
+          }
+          if (data.emails.adminSent) parts.push('admin');
+          toast.success(`Update email sent to ${parts.join(', ')}`);
+        } else if (partyCount === 0) {
+          toast.error('Updated, but no sender/receiver email is on file to notify');
+        }
+
         return true;
       } catch (err) {
         console.error(err);

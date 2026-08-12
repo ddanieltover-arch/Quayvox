@@ -47,6 +47,7 @@ export interface ShipmentChangeSet {
   statusChanged: boolean;
   positionChanged: boolean;
   etaChanged: boolean;
+  progressChanged: boolean;
   timelineOnly: boolean;
   previousStatus?: ShipmentStatus;
   previousEta?: string | null;
@@ -67,15 +68,17 @@ export function detectShipmentChanges(
   const prevLng = before.current_lng != null ? Number(before.current_lng) : null;
   const nextLat = after.current_lat != null ? Number(after.current_lat) : null;
   const nextLng = after.current_lng != null ? Number(after.current_lng) : null;
+  const addressInPatch = Object.prototype.hasOwnProperty.call(patch, 'current_address');
+  const coordsInPatch =
+    Object.prototype.hasOwnProperty.call(patch, 'current_lat') ||
+    Object.prototype.hasOwnProperty.call(patch, 'current_lng');
   const coordsChanged =
-    (Object.prototype.hasOwnProperty.call(patch, 'current_lat') ||
-      Object.prototype.hasOwnProperty.call(patch, 'current_lng')) &&
-    prevLat !== nextLat &&
-    prevLng !== nextLng &&
     nextLat != null &&
-    nextLng != null;
+    nextLng != null &&
+    (prevLat !== nextLat || prevLng !== nextLng) &&
+    (coordsInPatch || addressInPatch);
   const addressChanged =
-    Object.prototype.hasOwnProperty.call(patch, 'current_address') &&
+    addressInPatch &&
     String(before.current_address ?? '').trim() !== String(after.current_address ?? '').trim();
   const positionChanged = coordsChanged || addressChanged;
 
@@ -84,13 +87,23 @@ export function detectShipmentChanges(
   const etaChanged =
     Object.prototype.hasOwnProperty.call(patch, 'eta') && prevEta !== nextEta;
 
+  const prevProgress = Number(before.progress) || 0;
+  const nextProgress = Number(after.progress) || 0;
+  const progressChanged =
+    Object.prototype.hasOwnProperty.call(patch, 'progress') && prevProgress !== nextProgress;
+
   const timelineOnly =
-    Boolean(eventMessage) && !statusChanged && !positionChanged && !etaChanged;
+    Boolean(eventMessage) &&
+    !statusChanged &&
+    !positionChanged &&
+    !etaChanged &&
+    !progressChanged;
 
   return {
     statusChanged,
     positionChanged,
     etaChanged,
+    progressChanged,
     timelineOnly,
     previousStatus: statusChanged ? prevStatus : undefined,
     previousEta: etaChanged ? prevEta : undefined,
@@ -131,6 +144,14 @@ export function buildContexts(
       eventLocation,
     });
   }
+  if (changes.progressChanged && !changes.statusChanged) {
+    contexts.push({
+      shipment,
+      kind: 'timeline',
+      eventMessage: eventMessage || `Progress updated to ${shipment.progress}%`,
+      eventLocation,
+    });
+  }
   if (changes.timelineOnly) {
     contexts.push({
       shipment,
@@ -140,16 +161,26 @@ export function buildContexts(
     });
   }
 
+  // Every admin save must notify — never drop the update silently.
+  if (!contexts.length) {
+    contexts.push({
+      shipment,
+      kind: 'timeline',
+      eventMessage: eventMessage || 'Shipment updated',
+      eventLocation,
+    });
+  }
+
   return contexts;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Unique sender + receiver emails for party notifications. */
+/** Unique sender + receiver (+ legacy customer) emails for party notifications. */
 export function getPartyNotificationEmails(shipment: ShipmentEmailData): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const raw of [shipment.senderEmail, shipment.receiverEmail]) {
+  for (const raw of [shipment.senderEmail, shipment.receiverEmail, shipment.customerEmail]) {
     const email = raw?.trim();
     if (!email || !EMAIL_RE.test(email)) continue;
     const key = email.toLowerCase();
@@ -162,10 +193,10 @@ export function getPartyNotificationEmails(shipment: ShipmentEmailData): string[
 
 export function shouldNotifyCustomer(
   _ctx: ShipmentEmailContext,
-  _notifyCustomer: boolean,
+  notifyCustomer: boolean,
   _customerEmail: string | null
 ): boolean {
-  return true;
+  return notifyCustomer !== false;
 }
 
 export function shouldNotifyAdmin(_ctx: ShipmentEmailContext): boolean {

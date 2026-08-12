@@ -289,8 +289,15 @@ export async function handleShipmentById(
         patch,
         {
           notifyCustomer: true,
-          eventMessage,
-          eventLocation,
+          eventMessage:
+            eventMessage?.trim() ||
+            (parsed.data.status
+              ? `Status updated to ${String(row.status)}`
+              : 'Shipment updated'),
+          eventLocation:
+            eventLocation ||
+            position_label ||
+            (typeof row.current_address === 'string' ? row.current_address : null),
           positionLabel: position_label,
         }
       );
@@ -301,6 +308,8 @@ export async function handleShipmentById(
           customerSent: emailResult.customerSent,
           adminSent: emailResult.adminSent,
           contexts: emailResult.contexts,
+          partyEmails: emailResult.partyEmails,
+          adminEmail: emailResult.adminEmail,
         },
       });
     } catch (err) {

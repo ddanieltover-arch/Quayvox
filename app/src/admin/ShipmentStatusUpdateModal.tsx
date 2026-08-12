@@ -187,7 +187,8 @@ export function ShipmentStatusUpdateModal({
           </div>
 
           <p className="text-xs text-text-secondary">
-            Sender and receiver are emailed automatically when their email is on file.
+            Every save emails the admin, sender, and receiver when their addresses are on file
+            (Pending, In Transit, Customs, Delivered, and Exception each use matching copy).
           </p>
 
           <div className="flex gap-2 pt-2">
