@@ -3,6 +3,7 @@ import {
   Search,
   Pencil,
   Trash2,
+  MapPin,
   ChevronLeft,
   ChevronRight,
   ArrowUpDown,
@@ -17,6 +18,7 @@ import type { Shipment } from '@/data/mockShipments';
 import { getStatusColor } from '@/data/mockShipments';
 import type { ShipmentWithExtras } from '@/lib/shipments';
 import { ShipmentEditModal } from '@/admin/ShipmentEditModal';
+import { ShipmentStatusUpdateModal } from '@/admin/ShipmentStatusUpdateModal';
 
 const modeIcons = { Air: Plane, Ocean: ShipIcon, Rail: Train, Road: Truck };
 const statuses: Shipment['status'][] = [
@@ -37,6 +39,7 @@ const Shipments = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [editing, setEditing] = useState<ShipmentWithExtras | null>(null);
+  const [updating, setUpdating] = useState<ShipmentWithExtras | null>(null);
   const itemsPerPage = 10;
 
   const confirmDelete = async (shipment: ShipmentWithExtras) => {
@@ -150,6 +153,10 @@ const Shipments = () => {
     setEditing(shipment);
   };
 
+  const openStatusUpdate = (shipment: ShipmentWithExtras) => {
+    setUpdating(shipment);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -244,6 +251,13 @@ const Shipments = () => {
                 <span className="text-xs text-text-secondary">{shipment.progress}%</span>
               </div>
               <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={() => openStatusUpdate(shipment)}
+                  className="p-2.5 min-h-11 min-w-11 rounded-lg hover:bg-white/5 text-text-secondary hover:text-cobalt"
+                  aria-label="Update status"
+                >
+                  <MapPin className="w-4 h-4" />
+                </button>
                 <button
                   onClick={() => openEdit(shipment)}
                   className="p-2.5 min-h-11 min-w-11 rounded-lg hover:bg-white/5 text-text-secondary hover:text-cobalt"
@@ -389,6 +403,13 @@ const Shipments = () => {
                     <td className="py-3 px-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          onClick={() => openStatusUpdate(shipment)}
+                          className="p-1.5 rounded-lg hover:bg-white/5 text-text-secondary hover:text-cobalt transition-colors"
+                          aria-label="Update status"
+                        >
+                          <MapPin className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => openEdit(shipment)}
                           className="p-1.5 rounded-lg hover:bg-white/5 text-text-secondary hover:text-cobalt transition-colors"
                           aria-label="Edit shipment"
@@ -470,6 +491,7 @@ const Shipments = () => {
       </div>
 
       <ShipmentEditModal shipment={editing} onClose={() => setEditing(null)} />
+      <ShipmentStatusUpdateModal shipment={updating} onClose={() => setUpdating(null)} />
     </div>
   );
 };

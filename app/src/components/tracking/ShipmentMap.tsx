@@ -12,6 +12,7 @@ export interface MapShipmentGeo {
   progress: number;
   origin?: string;
   destination?: string;
+  currentAddress?: string | null;
   originLat?: number | null;
   originLng?: number | null;
   destinationLat?: number | null;
@@ -67,6 +68,10 @@ export function resolveDisplayPosition(s: MapShipmentGeo): GeoCoord | null {
   if (isValidCoord(s.currentLat, s.currentLng)) {
     return [s.currentLat as number, s.currentLng as number];
   }
+  if (s.currentAddress) {
+    const lookup = lookupPortCoords(s.currentAddress);
+    if (lookup) return lookup;
+  }
   const origin = resolveOriginCoord(s);
   const destination = resolveDestinationCoord(s);
   if (origin && destination) {
@@ -108,6 +113,14 @@ function buildRouteLatLngs(s: MapShipmentGeo): L.LatLngExpression[] {
   }
   if (destination) coords.push([destination[0], destination[1]]);
   return coords;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function createMarkerIcon(kind: 'origin' | 'destination' | 'current', selected: boolean): L.DivIcon {
@@ -281,7 +294,7 @@ export function ShipmentMap({
         })
           .bindPopup(
             `<div style="font:12px/1.4 system-ui,sans-serif;color:#0B1020">
-              <strong>${s.trackingNumber}</strong><br/>${label}<br/>${s.status}
+              <strong>${escapeHtml(s.trackingNumber)}</strong><br/>${escapeHtml(label)}<br/>${escapeHtml(s.status)}
             </div>`
           )
           .addTo(map);
@@ -299,7 +312,14 @@ export function ShipmentMap({
       if (origin) addMarker(origin[0], origin[1], 'origin', 'Origin');
       if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
       const current = resolveDisplayPosition(s);
-      if (current) addMarker(current[0], current[1], 'current', 'Current position');
+      if (current) {
+        addMarker(
+          current[0],
+          current[1],
+          'current',
+          s.currentAddress?.trim() || 'Current position'
+        );
+      }
     }
 
     if (showPorts) {
@@ -319,7 +339,12 @@ export function ShipmentMap({
       portsLayerRef.current = group;
     }
 
-    const fitKey = `${selectedId ?? 'all'}:${geoShipments.map((s) => s.id).join(',')}`;
+    const fitKey = `${selectedId ?? 'all'}:${geoShipments
+      .map((s) => {
+        const cur = resolveDisplayPosition(s);
+        return `${s.id}:${s.progress}:${cur?.[0] ?? ''}:${cur?.[1] ?? ''}:${s.currentAddress ?? ''}`;
+      })
+      .join('|')}`;
     if (bounds.isValid() && interactive && fitKey !== fittedKeyRef.current) {
       fittedKeyRef.current = fitKey;
 
@@ -336,9 +361,10 @@ export function ShipmentMap({
         const cur = resolveDisplayPosition(selected);
         if (cur) extend(cur[0], cur[1]);
         if (selectedBounds.isValid()) {
+          const hasPinnedCurrent = isValidCoord(selected.currentLat, selected.currentLng);
           map.fitBounds(selectedBounds, {
             padding: [56, 56],
-            maxZoom: 6,
+            maxZoom: hasPinnedCurrent ? 12 : 6,
             animate: !reduceMotion,
             duration: reduceMotion ? 0 : 0.6,
           });
@@ -360,9 +386,9 @@ export function ShipmentMap({
   if (!hasGeo) {
     return (
       <div
-        className={`flex items-center justify-center rounded-xl border border-white/10 bg-navy-900/60 text-sm text-text-secondary min-h-[16rem] ${className}`}
+        className={`flex items-center justify-center rounded-xl border border-white/10 bg-navy-900/60 text-sm text-text-secondary min-h-[16rem] px-4 text-center ${className}`}
       >
-        Location updates when the shipment is scanned
+        Map appears once origin, destination, or a current address can be located
       </div>
     );
   }

@@ -99,6 +99,7 @@ const LiveMap = () => {
         destinationLng: s.destinationLng,
         currentLat: s.currentLat,
         currentLng: s.currentLng,
+        currentAddress: s.currentAddress,
         positions: s.id === selectedId ? positions : undefined,
       })),
     [activeShipments, positions, selectedId]

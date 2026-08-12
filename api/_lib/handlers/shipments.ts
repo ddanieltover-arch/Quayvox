@@ -247,14 +247,24 @@ export async function handleShipmentById(
         return;
       }
 
+      const beforeLat = before.current_lat != null ? Number(before.current_lat) : null;
+      const beforeLng = before.current_lng != null ? Number(before.current_lng) : null;
       const lat = row.current_lat != null ? Number(row.current_lat) : null;
       const lng = row.current_lng != null ? Number(row.current_lng) : null;
-      if (hasCurrentLat && hasCurrentLng && lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+      const coordsValid = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+      const coordsChanged =
+        coordsValid && (beforeLat !== lat || beforeLng !== lng);
+      const addressUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'current_address');
+
+      if (coordsValid && (hasCurrentLat || addressUpdated || coordsChanged)) {
         await insertShipmentPosition({
           shipment_id: id,
           lat,
           lng,
-          label: position_label ?? eventLocation ?? null,
+          label:
+            position_label ??
+            eventLocation ??
+            (typeof row.current_address === 'string' ? row.current_address : null),
         });
       }
 

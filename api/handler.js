@@ -1861,11 +1861,138 @@ var PORT_COORDINATES = {
 function lookupPortCoords(place) {
   const trimmed = place.trim();
   if (!trimmed) return null;
-  if (PORT_COORDINATES[trimmed]) return PORT_COORDINATES[trimmed];
-  const key = Object.keys(PORT_COORDINATES).find(
-    (k) => k.toLowerCase() === trimmed.toLowerCase()
+  const exact = Object.keys(PORT_COORDINATES).find(
+    (key) => key.toLowerCase() === trimmed.toLowerCase()
   );
-  return key ? PORT_COORDINATES[key] : null;
+  if (exact) return PORT_COORDINATES[exact];
+  const lower = trimmed.toLowerCase();
+  for (const [key, coord] of Object.entries(PORT_COORDINATES)) {
+    const city = key.split(",")[0]?.trim().toLowerCase();
+    if (city && lower.includes(city)) return coord;
+  }
+  return null;
+}
+
+// api/_lib/geocode.ts
+var cache = /* @__PURE__ */ new Map();
+var lastNominatimAt = 0;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function parseCoordPair(input) {
+  const trimmed = input.trim();
+  const match = trimmed.match(
+    /^(-?\d{1,2}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)$/
+  );
+  if (!match) return null;
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return [lat, lng];
+}
+async function geocodeWithNominatim(address) {
+  const elapsed = Date.now() - lastNominatimAt;
+  if (elapsed < 1100) {
+    await sleep(1100 - elapsed);
+  }
+  lastNominatimAt = Date.now();
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("q", address);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", "1");
+  const res = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "QuayvoxLogistics/1.0 (shipment-tracking; https://quayvox.com)"
+    }
+  });
+  if (!res.ok) {
+    console.warn("geocode nominatim failed", res.status, address);
+    return null;
+  }
+  const data = await res.json();
+  const hit = data[0];
+  if (!hit?.lat || !hit?.lon) return null;
+  const lat = Number(hit.lat);
+  const lng = Number(hit.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return [lat, lng];
+}
+async function geocodeAddress(address) {
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+  const key = trimmed.toLowerCase();
+  if (cache.has(key)) return cache.get(key) ?? null;
+  const port = lookupPortCoords(trimmed);
+  if (port) {
+    cache.set(key, port);
+    return port;
+  }
+  const parsed = parseCoordPair(trimmed);
+  if (parsed) {
+    cache.set(key, parsed);
+    return parsed;
+  }
+  try {
+    const remote = await geocodeWithNominatim(trimmed);
+    cache.set(key, remote);
+    return remote;
+  } catch (err) {
+    console.warn("geocode error", err);
+    cache.set(key, null);
+    return null;
+  }
+}
+function asNullableNumber(value) {
+  if (value === null || value === void 0 || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+function asNullableString(value) {
+  if (value === null || value === void 0) return null;
+  const s2 = String(value).trim();
+  return s2.length ? s2 : null;
+}
+async function enrichShipmentGeo(payload, options) {
+  const next = { ...payload };
+  const originText = asNullableString(next.sender_address) || asNullableString(next.origin) || "";
+  const destinationText = asNullableString(next.receiver_address) || asNullableString(next.destination) || "";
+  const currentText = asNullableString(next.current_address);
+  if (asNullableNumber(next.origin_lat) == null || asNullableNumber(next.origin_lng) == null) {
+    if (originText) {
+      const coords = await geocodeAddress(originText);
+      if (coords) {
+        next.origin_lat = coords[0];
+        next.origin_lng = coords[1];
+      }
+    }
+  }
+  if (asNullableNumber(next.destination_lat) == null || asNullableNumber(next.destination_lng) == null) {
+    if (destinationText) {
+      const coords = await geocodeAddress(destinationText);
+      if (coords) {
+        next.destination_lat = coords[0];
+        next.destination_lng = coords[1];
+      }
+    }
+  }
+  if (!currentText) {
+    if (Object.prototype.hasOwnProperty.call(payload, "current_address")) {
+      next.current_lat = null;
+      next.current_lng = null;
+    }
+    return next;
+  }
+  const shouldGeocodeCurrent = options?.forceCurrent || asNullableNumber(next.current_lat) == null || asNullableNumber(next.current_lng) == null;
+  if (shouldGeocodeCurrent) {
+    const coords = await geocodeAddress(currentText);
+    if (coords) {
+      next.current_lat = coords[0];
+      next.current_lng = coords[1];
+    }
+  }
+  return next;
 }
 
 // api/_lib/shipments.ts
@@ -1921,12 +2048,12 @@ var UPDATE_COLUMNS = /* @__PURE__ */ new Set([
   "current_lng",
   "current_location_updated_at"
 ]);
-function asNullableNumber(value) {
+function asNullableNumber2(value) {
   if (value === null || value === void 0 || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
-function asNullableString(value) {
+function asNullableString2(value) {
   if (value === null || value === void 0) return null;
   const s2 = String(value).trim();
   return s2.length ? s2 : null;
@@ -1944,14 +2071,14 @@ function resolveGeoDefaults(payload) {
   const next = { ...payload };
   const origin = typeof next.origin === "string" ? next.origin : "";
   const destination = typeof next.destination === "string" ? next.destination : "";
-  if (asNullableNumber(next.origin_lat) == null || asNullableNumber(next.origin_lng) == null) {
+  if (asNullableNumber2(next.origin_lat) == null || asNullableNumber2(next.origin_lng) == null) {
     const o = lookupPortCoords(origin);
     if (o) {
       next.origin_lat = o[0];
       next.origin_lng = o[1];
     }
   }
-  if (asNullableNumber(next.destination_lat) == null || asNullableNumber(next.destination_lng) == null) {
+  if (asNullableNumber2(next.destination_lat) == null || asNullableNumber2(next.destination_lng) == null) {
     const d = lookupPortCoords(destination);
     if (d) {
       next.destination_lat = d[0];
@@ -2019,10 +2146,10 @@ async function insertShipmentPosition(input) {
 }
 async function insertShipment(payload) {
   const sql = getSql();
-  const resolved = resolveGeoDefaults(payload);
+  const resolved = await enrichShipmentGeo(resolveGeoDefaults(payload), { forceCurrent: true });
   const senderName = asString(resolved.sender_name ?? resolved.shipper);
   const receiverName = asString(resolved.receiver_name ?? resolved.consignee);
-  const receiverEmail = asNullableString(resolved.receiver_email ?? resolved.customer_email);
+  const receiverEmail = asNullableString2(resolved.receiver_email ?? resolved.customer_email);
   const senderAddress = asString(resolved.sender_address ?? resolved.origin);
   const receiverAddress = asString(resolved.receiver_address ?? resolved.destination);
   const rows = await sql`
@@ -2057,10 +2184,10 @@ async function insertShipment(payload) {
       ${resolved.documents},
       ${resolved.tags},
       ${receiverEmail},
-      ${asNullableString(resolved.notes)},
+      ${asNullableString2(resolved.notes)},
       ${senderName},
       ${asString(resolved.sender_phone)},
-      ${asNullableString(resolved.sender_email)},
+      ${asNullableString2(resolved.sender_email)},
       ${senderAddress},
       ${""},
       ${""},
@@ -2080,14 +2207,14 @@ async function insertShipment(payload) {
       ${asNullableDate(resolved.delivery_at)},
       ${Number(resolved.volume ?? 0)},
       ${asString(resolved.payment_method)},
-      ${asNullableString(resolved.current_address)},
-      ${asNullableNumber(resolved.origin_lat)},
-      ${asNullableNumber(resolved.origin_lng)},
-      ${asNullableNumber(resolved.destination_lat)},
-      ${asNullableNumber(resolved.destination_lng)},
-      ${asNullableNumber(resolved.current_lat)},
-      ${asNullableNumber(resolved.current_lng)},
-      ${resolved.current_location_updated_at ? new Date(resolved.current_location_updated_at) : asNullableNumber(resolved.current_lat) != null ? /* @__PURE__ */ new Date() : null}
+      ${asNullableString2(resolved.current_address)},
+      ${asNullableNumber2(resolved.origin_lat)},
+      ${asNullableNumber2(resolved.origin_lng)},
+      ${asNullableNumber2(resolved.destination_lat)},
+      ${asNullableNumber2(resolved.destination_lng)},
+      ${asNullableNumber2(resolved.current_lat)},
+      ${asNullableNumber2(resolved.current_lng)},
+      ${resolved.current_location_updated_at ? new Date(resolved.current_location_updated_at) : asNullableNumber2(resolved.current_lat) != null ? /* @__PURE__ */ new Date() : null}
     )
     returning *
   `;
@@ -2100,17 +2227,23 @@ async function updateShipment(id, patch) {
   for (const [key, value] of Object.entries(patch)) {
     if (UPDATE_COLUMNS.has(key)) merged[key] = value;
   }
-  const withGeo = resolveGeoDefaults(merged);
-  const currentChanged = Object.prototype.hasOwnProperty.call(patch, "current_lat") || Object.prototype.hasOwnProperty.call(patch, "current_lng");
-  const addressChanged = Object.prototype.hasOwnProperty.call(patch, "current_address");
-  if (currentChanged && asNullableNumber(withGeo.current_lat) != null && asNullableNumber(withGeo.current_lng) != null) {
+  const addressInPatch = Object.prototype.hasOwnProperty.call(patch, "current_address");
+  const previousAddress = asNullableString2(existing.current_address);
+  const nextAddress = addressInPatch ? asNullableString2(patch.current_address) : previousAddress;
+  const addressTextChanged = addressInPatch && previousAddress !== nextAddress;
+  const withGeo = await enrichShipmentGeo(resolveGeoDefaults(merged), {
+    forceCurrent: addressTextChanged
+  });
+  const currentChanged = Object.prototype.hasOwnProperty.call(patch, "current_lat") || Object.prototype.hasOwnProperty.call(patch, "current_lng") || addressInPatch && asNullableNumber2(withGeo.current_lat) != null && asNullableNumber2(withGeo.current_lng) != null && (addressTextChanged || asNullableNumber2(existing.current_lat) == null || asNullableNumber2(existing.current_lng) == null);
+  const addressChanged = addressInPatch;
+  if (currentChanged && asNullableNumber2(withGeo.current_lat) != null && asNullableNumber2(withGeo.current_lng) != null) {
     withGeo.current_location_updated_at = (/* @__PURE__ */ new Date()).toISOString();
-  } else if (addressChanged && asNullableString(withGeo.current_address)) {
+  } else if (addressChanged && asNullableString2(withGeo.current_address)) {
     withGeo.current_location_updated_at = (/* @__PURE__ */ new Date()).toISOString();
   }
   const senderName = asString(withGeo.sender_name ?? withGeo.shipper);
   const receiverName = asString(withGeo.receiver_name ?? withGeo.consignee);
-  const receiverEmail = asNullableString(withGeo.receiver_email ?? withGeo.customer_email);
+  const receiverEmail = asNullableString2(withGeo.receiver_email ?? withGeo.customer_email);
   const senderAddress = asString(withGeo.sender_address ?? withGeo.origin);
   const receiverAddress = asString(withGeo.receiver_address ?? withGeo.destination);
   const sql = getSql();
@@ -2135,10 +2268,10 @@ async function updateShipment(id, patch) {
       documents = ${withGeo.documents},
       tags = ${withGeo.tags},
       customer_email = ${receiverEmail},
-      notes = ${asNullableString(withGeo.notes)},
+      notes = ${asNullableString2(withGeo.notes)},
       sender_name = ${senderName},
       sender_phone = ${asString(withGeo.sender_phone)},
-      sender_email = ${asNullableString(withGeo.sender_email)},
+      sender_email = ${asNullableString2(withGeo.sender_email)},
       sender_address = ${senderAddress},
       sender_street = ${""},
       sender_city = ${""},
@@ -2158,13 +2291,13 @@ async function updateShipment(id, patch) {
       delivery_at = ${asNullableDate(withGeo.delivery_at)},
       volume = ${Number(withGeo.volume ?? 0)},
       payment_method = ${asString(withGeo.payment_method)},
-      current_address = ${asNullableString(withGeo.current_address)},
-      origin_lat = ${asNullableNumber(withGeo.origin_lat)},
-      origin_lng = ${asNullableNumber(withGeo.origin_lng)},
-      destination_lat = ${asNullableNumber(withGeo.destination_lat)},
-      destination_lng = ${asNullableNumber(withGeo.destination_lng)},
-      current_lat = ${asNullableNumber(withGeo.current_lat)},
-      current_lng = ${asNullableNumber(withGeo.current_lng)},
+      current_address = ${asNullableString2(withGeo.current_address)},
+      origin_lat = ${asNullableNumber2(withGeo.origin_lat)},
+      origin_lng = ${asNullableNumber2(withGeo.origin_lng)},
+      destination_lat = ${asNullableNumber2(withGeo.destination_lat)},
+      destination_lng = ${asNullableNumber2(withGeo.destination_lng)},
+      current_lat = ${asNullableNumber2(withGeo.current_lat)},
+      current_lng = ${asNullableNumber2(withGeo.current_lng)},
       current_location_updated_at = ${withGeo.current_location_updated_at ? new Date(withGeo.current_location_updated_at) : null}
     where id = ${id}
     returning *
@@ -2530,14 +2663,19 @@ async function handleShipmentById(req, res, id) {
         res.status(404).json({ error: "Shipment not found" });
         return;
       }
+      const beforeLat = before.current_lat != null ? Number(before.current_lat) : null;
+      const beforeLng = before.current_lng != null ? Number(before.current_lng) : null;
       const lat = row.current_lat != null ? Number(row.current_lat) : null;
       const lng = row.current_lng != null ? Number(row.current_lng) : null;
-      if (hasCurrentLat && hasCurrentLng && lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+      const coordsValid = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+      const coordsChanged = coordsValid && (beforeLat !== lat || beforeLng !== lng);
+      const addressUpdated = Object.prototype.hasOwnProperty.call(parsed.data, "current_address");
+      if (coordsValid && (hasCurrentLat || addressUpdated || coordsChanged)) {
         await insertShipmentPosition({
           shipment_id: id,
           lat,
           lng,
-          label: position_label ?? eventLocation ?? null
+          label: position_label ?? eventLocation ?? (typeof row.current_address === "string" ? row.current_address : null)
         });
       }
       if (eventMessage || parsed.data.status) {

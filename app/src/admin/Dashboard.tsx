@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Ship, Package, AlertTriangle, TrendingUp,
-  ArrowUpRight, ArrowDownRight, Clock, DollarSign, Pencil, Trash2
+  ArrowUpRight, ArrowDownRight, Clock, DollarSign, Pencil, Trash2, MapPin
 } from 'lucide-react';
 import { useShipments } from '@/context/ShipmentContext';
 import { getStatusColor } from '@/data/mockShipments';
 import type { ShipmentWithExtras } from '@/lib/shipments';
 import { ShipmentEditModal } from '@/admin/ShipmentEditModal';
+import { ShipmentStatusUpdateModal } from '@/admin/ShipmentStatusUpdateModal';
 import gsap from 'gsap';
 
 const Dashboard = () => {
@@ -15,6 +16,7 @@ const Dashboard = () => {
   const cardsRef = useRef<HTMLDivElement>(null);
   const [timeRange, setTimeRange] = useState('7d');
   const [editing, setEditing] = useState<ShipmentWithExtras | null>(null);
+  const [updating, setUpdating] = useState<ShipmentWithExtras | null>(null);
 
   const confirmDelete = async (shipment: ShipmentWithExtras) => {
     if (
@@ -216,6 +218,14 @@ const Dashboard = () => {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         type="button"
+                        onClick={() => setUpdating(shipment)}
+                        className="p-1.5 rounded-lg hover:bg-white/5 text-text-secondary hover:text-cobalt transition-colors"
+                        aria-label="Update status"
+                      >
+                        <MapPin className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setEditing(shipment)}
                         className="p-1.5 rounded-lg hover:bg-white/5 text-text-secondary hover:text-cobalt transition-colors"
                         aria-label="Edit shipment"
@@ -240,6 +250,7 @@ const Dashboard = () => {
       </div>
 
       <ShipmentEditModal shipment={editing} onClose={() => setEditing(null)} />
+      <ShipmentStatusUpdateModal shipment={updating} onClose={() => setUpdating(null)} />
     </div>
   );
 };

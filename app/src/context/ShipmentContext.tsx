@@ -183,7 +183,17 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           message: `${mapped.trackingNumber} has been updated.`,
           type: 'info',
         });
-        toast.success('Shipment updated');
+
+        const addressWasUpdated =
+          updates.currentAddress !== undefined &&
+          Boolean(String(updates.currentAddress ?? '').trim());
+        if (addressWasUpdated && (mapped.currentLat == null || mapped.currentLng == null)) {
+          toast.success('Shipment updated — address could not be pinned on the map');
+        } else if (addressWasUpdated) {
+          toast.success('Shipment updated and pinned on the map');
+        } else {
+          toast.success('Shipment updated');
+        }
         return true;
       } catch (err) {
         console.error(err);

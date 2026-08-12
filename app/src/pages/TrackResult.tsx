@@ -40,6 +40,7 @@ const TrackResult = () => {
         destinationLng: shipment.destinationLng,
         currentLat: shipment.currentLat,
         currentLng: shipment.currentLng,
+        currentAddress: shipment.currentAddress,
         positions,
       }
     : null;
@@ -184,9 +185,8 @@ const TrackResult = () => {
               />
             ) : (
               <p className="px-5 sm:px-6 pb-5 text-sm text-text-secondary">
-                Map appears when origin and destination include a recognized city (for example{' '}
-                <span className="font-mono text-cobalt">Los Angeles, US</span>) or when a scan
-                location is added in admin.
+                Map appears once the shipment has a locatable origin, destination, or current address
+                from an admin update.
               </p>
             )}
           </div>

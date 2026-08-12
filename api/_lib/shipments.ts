@@ -1,5 +1,6 @@
 import { getSql } from './db';
 import { lookupPortCoords } from './geoPorts';
+import { enrichShipmentGeo } from './geocode';
 
 const UPDATE_COLUMNS = new Set([
   'tracking_number',
@@ -180,7 +181,7 @@ export async function insertShipmentPosition(input: {
 
 export async function insertShipment(payload: Record<string, unknown>) {
   const sql = getSql();
-  const resolved = resolveGeoDefaults(payload);
+  const resolved = await enrichShipmentGeo(resolveGeoDefaults(payload), { forceCurrent: true });
   const senderName = asString(resolved.sender_name ?? resolved.shipper);
   const receiverName = asString(resolved.receiver_name ?? resolved.consignee);
   const receiverEmail = asNullableString(resolved.receiver_email ?? resolved.customer_email);
@@ -268,12 +269,27 @@ export async function updateShipment(id: string, patch: Record<string, unknown>)
     if (UPDATE_COLUMNS.has(key)) merged[key] = value;
   }
 
-  const withGeo = resolveGeoDefaults(merged);
+  const addressInPatch = Object.prototype.hasOwnProperty.call(patch, 'current_address');
+  const previousAddress = asNullableString(existing.current_address);
+  const nextAddress = addressInPatch
+    ? asNullableString(patch.current_address)
+    : previousAddress;
+  const addressTextChanged = addressInPatch && previousAddress !== nextAddress;
+
+  const withGeo = await enrichShipmentGeo(resolveGeoDefaults(merged), {
+    forceCurrent: addressTextChanged,
+  });
 
   const currentChanged =
     Object.prototype.hasOwnProperty.call(patch, 'current_lat') ||
-    Object.prototype.hasOwnProperty.call(patch, 'current_lng');
-  const addressChanged = Object.prototype.hasOwnProperty.call(patch, 'current_address');
+    Object.prototype.hasOwnProperty.call(patch, 'current_lng') ||
+    (addressInPatch &&
+      asNullableNumber(withGeo.current_lat) != null &&
+      asNullableNumber(withGeo.current_lng) != null &&
+      (addressTextChanged ||
+        asNullableNumber(existing.current_lat) == null ||
+        asNullableNumber(existing.current_lng) == null));
+  const addressChanged = addressInPatch;
   if (currentChanged && asNullableNumber(withGeo.current_lat) != null && asNullableNumber(withGeo.current_lng) != null) {
     withGeo.current_location_updated_at = new Date().toISOString();
   } else if (addressChanged && asNullableString(withGeo.current_address)) {

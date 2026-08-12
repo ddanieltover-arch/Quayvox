@@ -275,6 +275,9 @@ export function ShipmentEditModal({ shipment, onClose }: ShipmentEditModalProps)
               rows={2}
               className={`${fieldClass} resize-y`}
             />
+            <p className="text-xs text-text-secondary">
+              Current address is geocoded and pinned on the live tracking map.
+            </p>
             <textarea
               placeholder="Description / notes"
               value={form.notes}
