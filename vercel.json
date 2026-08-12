@@ -1,14 +1,9 @@
 {
   "version": 2,
-  "buildCommand": "npm run build:api && cd app && npm install && npm run build",
+  "buildCommand": "npm run build:api && cd app && npm run build",
   "outputDirectory": "app/dist",
   "installCommand": "npm install && cd app && npm install",
   "framework": null,
-  "functions": {
-    "api/handler.js": {
-      "memory": 1024
-    }
-  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/handler?path=$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
