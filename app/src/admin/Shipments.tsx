@@ -11,12 +11,12 @@ import {
   Ship as ShipIcon,
   Train,
   Truck,
-  X,
 } from 'lucide-react';
 import { useShipments } from '@/context/ShipmentContext';
 import type { Shipment } from '@/data/mockShipments';
 import { getStatusColor } from '@/data/mockShipments';
 import type { ShipmentWithExtras } from '@/lib/shipments';
+import { ShipmentEditModal } from '@/admin/ShipmentEditModal';
 
 const modeIcons = { Air: Plane, Ocean: ShipIcon, Rail: Train, Road: Truck };
 const statuses: Shipment['status'][] = [
@@ -28,7 +28,7 @@ const statuses: Shipment['status'][] = [
 ];
 
 const Shipments = () => {
-  const { shipments, deleteShipment, updateShipment, loading } = useShipments();
+  const { shipments, deleteShipment, loading } = useShipments();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [modeFilter, setModeFilter] = useState('All');
@@ -37,16 +37,34 @@ const Shipments = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [editing, setEditing] = useState<ShipmentWithExtras | null>(null);
-  const [editForm, setEditForm] = useState({
-    status: 'Pending' as Shipment['status'],
-    progress: 0,
-    eta: '',
-    customerEmail: '',
-    notes: '',
-    currentAddress: '',
-  });
-  const [saving, setSaving] = useState(false);
   const itemsPerPage = 10;
+
+  const confirmDelete = async (shipment: ShipmentWithExtras) => {
+    if (
+      !window.confirm(
+        `Delete shipment ${shipment.trackingNumber}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    await deleteShipment(shipment.id);
+    setSelectedItems((prev) => prev.filter((id) => id !== shipment.id));
+  };
+
+  const deleteSelected = async () => {
+    if (!selectedItems.length) return;
+    if (
+      !window.confirm(
+        `Delete ${selectedItems.length} selected shipment(s)? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    for (const id of selectedItems) {
+      await deleteShipment(id);
+    }
+    setSelectedItems([]);
+  };
 
   const filtered = shipments
     .filter((s) => {
@@ -130,50 +148,6 @@ const Shipments = () => {
 
   const openEdit = (shipment: ShipmentWithExtras) => {
     setEditing(shipment);
-    setEditForm({
-      status: shipment.status,
-      progress: shipment.progress,
-      eta: shipment.eta,
-      customerEmail: shipment.customerEmail || '',
-      notes: shipment.notes || '',
-      currentAddress: shipment.currentAddress || '',
-    });
-  };
-
-  const saveEdit = async () => {
-    if (!editing) return;
-
-    setSaving(true);
-
-    const updates: Parameters<typeof updateShipment>[1] = {
-      status: editForm.status,
-      progress: editForm.progress,
-      eta: editForm.eta,
-      customerEmail: editForm.customerEmail || null,
-      notes: editForm.notes || null,
-    };
-
-    const nextCurrentAddress = editForm.currentAddress.trim();
-    const addressChanged = nextCurrentAddress !== (editing.currentAddress ?? '').trim();
-    const statusChanged = editForm.status !== editing.status;
-    const etaChanged = editForm.eta !== editing.eta;
-
-    if (addressChanged) {
-      updates.currentAddress = nextCurrentAddress || null;
-    }
-
-    await updateShipment(editing.id, updates, {
-      eventMessage: statusChanged
-        ? `Status updated to ${editForm.status}`
-        : addressChanged
-          ? 'Location updated'
-          : etaChanged
-            ? 'ETA updated'
-            : undefined,
-      eventLocation: addressChanged ? nextCurrentAddress : undefined,
-    });
-    setSaving(false);
-    setEditing(null);
   };
 
   return (
@@ -186,6 +160,15 @@ const Shipments = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {selectedItems.length > 0 && (
+            <button
+              onClick={() => void deleteSelected()}
+              className="btn-secondary flex items-center gap-2 text-sm min-h-11 text-red-400 border-red-500/30 hover:bg-red-500/10"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete ({selectedItems.length})
+            </button>
+          )}
           <button onClick={exportCSV} className="btn-secondary flex items-center gap-2 text-sm min-h-11">
             <Download className="w-4 h-4" />
             Export
@@ -269,7 +252,7 @@ const Shipments = () => {
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => void deleteShipment(shipment.id)}
+                  onClick={() => void confirmDelete(shipment)}
                   className="p-2.5 min-h-11 min-w-11 rounded-lg hover:bg-red-500/10 text-text-secondary hover:text-red-400"
                   aria-label="Delete shipment"
                 >
@@ -413,7 +396,7 @@ const Shipments = () => {
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => void deleteShipment(shipment.id)}
+                          onClick={() => void confirmDelete(shipment)}
                           className="p-1.5 rounded-lg hover:bg-red-500/10 text-text-secondary hover:text-red-400 transition-colors"
                           aria-label="Delete shipment"
                         >
@@ -486,134 +469,7 @@ const Shipments = () => {
         </button>
       </div>
 
-      {editing && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4">
-          <div className="w-full sm:max-w-lg card-surface rounded-t-2xl sm:rounded-2xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="font-display font-semibold text-lg text-text-primary">Edit shipment</h2>
-                <p className="text-xs font-mono text-cobalt mt-1">{editing.trackingNumber}</p>
-              </div>
-              <button
-                onClick={() => setEditing(null)}
-                className="p-2 rounded-lg hover:bg-white/5 text-text-secondary"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                  Status
-                </label>
-                <select
-                  value={editForm.status}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, status: e.target.value as Shipment['status'] }))
-                  }
-                  className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                >
-                  {statuses.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                  Progress ({editForm.progress}%)
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={editForm.progress}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, progress: Number(e.target.value) }))
-                  }
-                  className="w-full"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                  ETA
-                </label>
-                <input
-                  type="date"
-                  value={editForm.eta}
-                  onChange={(e) => setEditForm((f) => ({ ...f, eta: e.target.value }))}
-                  className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                  Customer email
-                </label>
-                <input
-                  type="email"
-                  value={editForm.customerEmail}
-                  onChange={(e) => setEditForm((f) => ({ ...f, customerEmail: e.target.value }))}
-                  className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                  placeholder="notify@customer.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                  Notes
-                </label>
-                <textarea
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={3}
-                  className="w-full px-3 py-2 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
-                  Current address
-                </label>
-                <textarea
-                  value={editForm.currentAddress}
-                  onChange={(e) => setEditForm((f) => ({ ...f, currentAddress: e.target.value }))}
-                  rows={3}
-                  className="w-full px-3 py-2 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
-                  placeholder="e.g. Port of Los Angeles, Berth 302, San Pedro, CA 90731, USA"
-                />
-              </div>
-
-              <p className="text-xs text-text-secondary">
-                Sender and receiver are emailed automatically on every update when their email is on file.
-              </p>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => setEditing(null)}
-                  className="btn-secondary flex-1 min-h-11"
-                  type="button"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => void saveEdit()}
-                  disabled={saving}
-                  className="btn-primary flex-1 min-h-11 disabled:opacity-60"
-                  type="button"
-                >
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ShipmentEditModal shipment={editing} onClose={() => setEditing(null)} />
     </div>
   );
 };

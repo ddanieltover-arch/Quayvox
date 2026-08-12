@@ -1,16 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Ship, Package, AlertTriangle, TrendingUp,
-  ArrowUpRight, ArrowDownRight, Clock, DollarSign
+  ArrowUpRight, ArrowDownRight, Clock, DollarSign, Pencil, Trash2
 } from 'lucide-react';
 import { useShipments } from '@/context/ShipmentContext';
 import { getStatusColor } from '@/data/mockShipments';
+import type { ShipmentWithExtras } from '@/lib/shipments';
+import { ShipmentEditModal } from '@/admin/ShipmentEditModal';
 import gsap from 'gsap';
 
 const Dashboard = () => {
-  const { shipments } = useShipments();
+  const { shipments, deleteShipment } = useShipments();
   const cardsRef = useRef<HTMLDivElement>(null);
   const [timeRange, setTimeRange] = useState('7d');
+  const [editing, setEditing] = useState<ShipmentWithExtras | null>(null);
+
+  const confirmDelete = async (shipment: ShipmentWithExtras) => {
+    if (
+      !window.confirm(
+        `Delete shipment ${shipment.trackingNumber}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    await deleteShipment(shipment.id);
+  };
 
   const stats = {
     total: shipments.length,
@@ -151,9 +166,9 @@ const Dashboard = () => {
       <div className="card-surface p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display font-semibold text-lg text-text-primary">Recent Shipments</h2>
-          <button className="text-sm text-cobalt hover:text-cobalt-light transition-colors">
+          <Link to="/admin/shipments" className="text-sm text-cobalt hover:text-cobalt-light transition-colors">
             View All
-          </button>
+          </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -164,6 +179,7 @@ const Dashboard = () => {
                 <th className="text-left py-3 px-2 text-xs font-mono text-text-secondary uppercase">Status</th>
                 <th className="text-left py-3 px-2 text-xs font-mono text-text-secondary uppercase">Progress</th>
                 <th className="text-left py-3 px-2 text-xs font-mono text-text-secondary uppercase">ETA</th>
+                <th className="text-right py-3 px-2 text-xs font-mono text-text-secondary uppercase">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -196,12 +212,34 @@ const Dashboard = () => {
                   <td className="py-3 px-2">
                     <span className="text-sm text-text-secondary">{shipment.eta}</span>
                   </td>
+                  <td className="py-3 px-2">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditing(shipment)}
+                        className="p-1.5 rounded-lg hover:bg-white/5 text-text-secondary hover:text-cobalt transition-colors"
+                        aria-label="Edit shipment"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void confirmDelete(shipment)}
+                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-text-secondary hover:text-red-400 transition-colors"
+                        aria-label="Delete shipment"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      <ShipmentEditModal shipment={editing} onClose={() => setEditing(null)} />
     </div>
   );
 };
