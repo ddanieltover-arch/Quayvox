@@ -45,5 +45,13 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      window.$chatwayOnLoad = function () {
+        if (window.$chatway && typeof window.$chatway.hideChatwayIcon === 'function') {
+          window.$chatway.hideChatwayIcon();
+        }
+      };
+    </script>
+    <script id="chatway" async="true" src="https://cdn.chatway.app/widget.js?id=U4GCVBWDAzXv"></script>
   </body>
 </html>

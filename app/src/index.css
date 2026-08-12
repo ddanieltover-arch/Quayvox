@@ -318,3 +318,8 @@ html.light .bg-black\/50 {
   background: rgba(79, 109, 245, 0.3);
   color: var(--selection-fg);
 }
+
+/* Use Quayvox branded launcher instead of Chatway's default bubble */
+.chatway--container .chatway--trigger-container {
+  display: none !important;
+}

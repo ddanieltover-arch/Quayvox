@@ -1,5 +1,37 @@
 import { useEffect, useState } from 'react';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, MessageCircle } from 'lucide-react';
+
+declare global {
+  interface Window {
+    $chatway?: {
+      openChatwayWidget?: () => void;
+      closeChatwayWidget?: () => void;
+      hideChatwayIcon?: () => void;
+      showChatwayIcon?: () => void;
+      isChatwayLoaded?: () => boolean;
+      isChatwayWidgetOpen?: () => boolean;
+    };
+  }
+}
+
+const openChatway = () => {
+  const chatway = window.$chatway;
+  if (chatway?.isChatwayLoaded?.() && chatway.openChatwayWidget) {
+    chatway.openChatwayWidget();
+    return;
+  }
+  // Widget still loading — retry briefly
+  const started = Date.now();
+  const timer = window.setInterval(() => {
+    const cw = window.$chatway;
+    if (cw?.isChatwayLoaded?.() && cw.openChatwayWidget) {
+      cw.openChatwayWidget();
+      window.clearInterval(timer);
+    } else if (Date.now() - started > 8000) {
+      window.clearInterval(timer);
+    }
+  }, 200);
+};
 
 const FloatingActions = () => {
   const [showTop, setShowTop] = useState(false);
@@ -31,6 +63,14 @@ const FloatingActions = () => {
         tabIndex={showTop ? 0 : -1}
       >
         <ArrowUp className="h-5 w-5" strokeWidth={2.25} />
+      </button>
+      <button
+        type="button"
+        onClick={openChatway}
+        className={fabClass}
+        aria-label="Open live chat"
+      >
+        <MessageCircle className="h-5 w-5" strokeWidth={2.25} />
       </button>
     </div>
   );
