@@ -7,8 +7,20 @@ import { handleTrack } from './handlers/track';
 
 function pathSegments(req: VercelRequest): string[] {
   const raw = req.query.path;
-  if (Array.isArray(raw)) return raw.map(String);
-  if (typeof raw === 'string' && raw.length > 0) return [raw];
+  if (Array.isArray(raw)) {
+    return raw.flatMap((part) => String(part).split('/').filter(Boolean));
+  }
+  if (typeof raw === 'string' && raw.length > 0) {
+    return raw.split('/').filter(Boolean);
+  }
+
+  // Fallback for local dev or direct function invocation without rewrite query.
+  const url = req.url || '';
+  const match = url.match(/\/api\/([^?#]*)/);
+  if (match?.[1]) {
+    return match[1].split('/').filter(Boolean);
+  }
+
   return [];
 }
 
