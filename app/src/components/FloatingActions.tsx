@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
-import WhatsAppIcon from '@/components/WhatsAppIcon';
-import { CONTACT_PHONE_DISPLAY, CONTACT_WHATSAPP_HREF } from '@/lib/contact';
 
 const FloatingActions = () => {
   const [showTop, setShowTop] = useState(false);
@@ -34,16 +32,6 @@ const FloatingActions = () => {
       >
         <ArrowUp className="h-5 w-5" strokeWidth={2.25} />
       </button>
-
-      <a
-        href={CONTACT_WHATSAPP_HREF}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={fabClass}
-        aria-label={`Chat on WhatsApp ${CONTACT_PHONE_DISPLAY}`}
-      >
-        <WhatsAppIcon className="h-6 w-6 fill-current text-[#F4F6FF]" />
-      </a>
     </div>
   );
 };

@@ -1,13 +1,11 @@
 import type { ReactNode } from 'react';
 import { Globe, Mail, Phone } from 'lucide-react';
-import WhatsAppIcon from '@/components/WhatsAppIcon';
 import {
   BRANCHES,
   CONTACT_EMAIL,
   CONTACT_MAILTO_HREF,
   CONTACT_PHONE_DISPLAY,
   CONTACT_TEL_HREF,
-  CONTACT_WHATSAPP_HREF,
 } from '@/lib/contact';
 
 type ContactRowProps = {
@@ -57,7 +55,7 @@ type ContactDetailsCardProps = {
 
 const ContactDetailsCard = ({
   title = 'Reach us directly',
-  subtitle = 'Prefer email, a call, or WhatsApp? We’ll route you to the right region.',
+  subtitle = 'Prefer email or a call? We’ll route you to the right region.',
   className = '',
 }: ContactDetailsCardProps) => (
   <div className={`card-surface p-5 sm:p-6 lg:p-8 ${className}`}>
@@ -73,15 +71,6 @@ const ContactDetailsCard = ({
         icon={<Phone className="w-5 h-5 text-cobalt" />}
         label="Phone"
         href={CONTACT_TEL_HREF}
-      >
-        {CONTACT_PHONE_DISPLAY}
-      </ContactRow>
-
-      <ContactRow
-        icon={<WhatsAppIcon className="h-5 w-5 shrink-0 text-cobalt" />}
-        label="WhatsApp"
-        href={CONTACT_WHATSAPP_HREF}
-        external
       >
         {CONTACT_PHONE_DISPLAY}
       </ContactRow>
