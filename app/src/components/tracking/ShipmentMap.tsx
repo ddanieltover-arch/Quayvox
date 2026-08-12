@@ -1,32 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  LngLatBounds,
-  Map as MapLibreMap,
-  Marker,
-  NavigationControl,
-  Popup,
-  type GeoJSONSource,
-} from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { DEFAULT_MAP_STYLE, MAP_STYLE_URLS } from '@/lib/mapConfig';
-import { interpolateCoords, lookupPortCoords, type GeoCoord } from '@/lib/geoPorts';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { MAP_TILE_LAYERS } from '@/lib/mapConfig';
+import { interpolateCoords, lookupPortCoords, PORT_COORDINATES, type GeoCoord } from '@/lib/geoPorts';
 import type { ShipmentPosition } from '@/lib/shipments';
-
-const ROUTE_SOURCE = 'qv-route';
-const ROUTE_LAYER = 'qv-route-line';
-const PORTS_SOURCE = 'qv-ports';
-const PORTS_LAYER = 'qv-ports-circle';
-
-type MapFeatureCollection = {
-  type: 'FeatureCollection';
-  features: Array<{
-    type: 'Feature';
-    properties: Record<string, string>;
-    geometry:
-      | { type: 'LineString'; coordinates: [number, number][] }
-      | { type: 'Point'; coordinates: [number, number] };
-  }>;
-};
 
 export interface MapShipmentGeo {
   id: string;
@@ -99,72 +76,55 @@ export function resolveDisplayPosition(s: MapShipmentGeo): GeoCoord | null {
 }
 
 function shipmentHasGeo(s: MapShipmentGeo): boolean {
-  return resolveOriginCoord(s) != null || resolveDestinationCoord(s) != null || resolveDisplayPosition(s) != null;
+  return (
+    resolveOriginCoord(s) != null ||
+    resolveDestinationCoord(s) != null ||
+    resolveDisplayPosition(s) != null
+  );
 }
 
-function buildRouteGeoJson(shipments: MapShipmentGeo[]): MapFeatureCollection {
-  const features: MapFeatureCollection['features'] = [];
+function buildRouteLatLngs(s: MapShipmentGeo): L.LatLngExpression[] {
+  const coords: L.LatLngExpression[] = [];
+  const origin = resolveOriginCoord(s);
+  const destination = resolveDestinationCoord(s);
 
-  for (const s of shipments) {
-    const coords: [number, number][] = [];
-    const origin = resolveOriginCoord(s);
-    const destination = resolveDestinationCoord(s);
-
-    if (origin) coords.push([origin[1], origin[0]]);
-    const trail = (s.positions ?? []).filter((p) => isValidCoord(p.lat, p.lng));
-    for (const p of trail) {
-      coords.push([p.lng, p.lat]);
-    }
-    const current = resolveDisplayPosition(s);
-    if (current && trail.length === 0) {
-      coords.push([current[1], current[0]]);
-    } else if (current && trail.length > 0) {
-      const last = trail[trail.length - 1];
-      if (last.lat !== current[0] || last.lng !== current[1]) {
-        coords.push([current[1], current[0]]);
-      }
-    }
-    if (destination) coords.push([destination[1], destination[0]]);
-    if (coords.length >= 2) {
-      features.push({
-        type: 'Feature',
-        properties: { id: s.id },
-        geometry: { type: 'LineString', coordinates: coords },
-      });
+  if (origin) coords.push([origin[0], origin[1]]);
+  const trail = (s.positions ?? []).filter((p) => isValidCoord(p.lat, p.lng));
+  for (const p of trail) {
+    coords.push([p.lat, p.lng]);
+  }
+  const current = resolveDisplayPosition(s);
+  if (current && trail.length === 0) {
+    coords.push([current[0], current[1]]);
+  } else if (current && trail.length > 0) {
+    const last = trail[trail.length - 1];
+    if (last.lat !== current[0] || last.lng !== current[1]) {
+      coords.push([current[0], current[1]]);
     }
   }
-
-  return { type: 'FeatureCollection', features };
+  if (destination) coords.push([destination[0], destination[1]]);
+  return coords;
 }
 
-function buildPortsGeoJson(ports: Record<string, GeoCoord>): MapFeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: Object.entries(ports).map(([name, [lat, lng]]) => ({
-      type: 'Feature',
-      properties: { name },
-      geometry: { type: 'Point', coordinates: [lng, lat] },
-    })),
-  };
-}
+function createMarkerIcon(kind: 'origin' | 'destination' | 'current', selected: boolean): L.DivIcon {
+  const classes = [
+    'qv-map-marker',
+    kind === 'current'
+      ? 'qv-map-marker--current'
+      : kind === 'origin'
+        ? 'qv-map-marker--origin'
+        : 'qv-map-marker--destination',
+    selected ? 'qv-map-marker--selected' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
-function ensureRouteLayer(map: MapLibreMap) {
-  if (!map.getSource(ROUTE_SOURCE)) {
-    map.addSource(ROUTE_SOURCE, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    });
-    map.addLayer({
-      id: ROUTE_LAYER,
-      type: 'line',
-      source: ROUTE_SOURCE,
-      paint: {
-        'line-color': '#4F6DF5',
-        'line-width': 2.5,
-        'line-opacity': 0.85,
-      },
-    });
-  }
+  return L.divIcon({
+    className: '',
+    html: `<button type="button" class="${classes}" aria-hidden="true"></button>`,
+    iconSize: kind === 'current' ? [16, 16] : [12, 12],
+    iconAnchor: kind === 'current' ? [8, 8] : [6, 6],
+  });
 }
 
 export function ShipmentMap({
@@ -176,10 +136,13 @@ export function ShipmentMap({
   interactive = true,
 }: ShipmentMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MapLibreMap | null>(null);
-  const markersRef = useRef<Marker[]>([]);
+  const mapRef = useRef<L.Map | null>(null);
+  const routesRef = useRef<L.Polyline[]>([]);
+  const markersRef = useRef<L.Marker[]>([]);
+  const portsLayerRef = useRef<L.LayerGroup | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const fittedKeyRef = useRef<string>('');
-  const styleIndexRef = useRef(0);
+  const tileIndexRef = useRef(0);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
@@ -198,201 +161,196 @@ export function ShipmentMap({
 
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
-    let map: MapLibreMap | null = null;
+    let tileErrors = 0;
 
-    const tryStyle = (index: number) => {
-      if (disposed || !containerRef.current) return;
+    const map = L.map(containerRef.current, {
+      center: [20, 10],
+      zoom: 2,
+      zoomControl: true,
+      attributionControl: true,
+      scrollWheelZoom: interactive,
+      dragging: interactive,
+      doubleClickZoom: interactive,
+      touchZoom: interactive,
+    });
 
-      const styleUrl = MAP_STYLE_URLS[index] ?? DEFAULT_MAP_STYLE;
-      styleIndexRef.current = index;
+    mapRef.current = map;
 
-      if (map) {
-        map.remove();
-        map = null;
-        mapRef.current = null;
+    const mountTileLayer = (index: number) => {
+      if (disposed) return;
+      const config = MAP_TILE_LAYERS[index];
+      if (!config) {
+        setMapError('Map tiles failed to load');
+        return;
       }
 
-      map = new MapLibreMap({
-        container: containerRef.current,
-        style: styleUrl,
-        center: [10, 20],
-        zoom: 1.4,
-        cooperativeGestures: true,
+      tileIndexRef.current = index;
+      tileErrors = 0;
+
+      if (tileLayerRef.current) {
+        map.removeLayer(tileLayerRef.current);
+      }
+
+      const layer = L.tileLayer(config.url, {
+        attribution: config.attribution,
+        subdomains: config.subdomains,
+        maxZoom: 19,
       });
 
-      mapRef.current = map;
-      map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
-
-      map.on('error', (event) => {
-        const message = event.error?.message ?? 'Map failed to load';
-        if (index + 1 < MAP_STYLE_URLS.length) {
-          tryStyle(index + 1);
-          return;
+      layer.on('tileerror', () => {
+        tileErrors += 1;
+        if (tileErrors >= 3 && index + 1 < MAP_TILE_LAYERS.length) {
+          mountTileLayer(index + 1);
+        } else if (tileErrors >= 3 && index + 1 >= MAP_TILE_LAYERS.length) {
+          setMapError('Map tiles failed to load');
         }
-        setMapError(message);
       });
 
-      map.on('load', () => {
-        if (disposed || !map) return;
-        ensureRouteLayer(map);
-        setMapError(null);
-        setMapReady(true);
-        requestAnimationFrame(() => map?.resize());
-      });
-
-      resizeObserver = new ResizeObserver(() => {
-        map?.resize();
-      });
-      resizeObserver.observe(containerRef.current);
+      layer.addTo(map);
+      tileLayerRef.current = layer;
     };
 
-    setMapReady(false);
-    setMapError(null);
-    tryStyle(styleIndexRef.current);
+    mountTileLayer(tileIndexRef.current);
+
+    map.whenReady(() => {
+      if (disposed) return;
+      setMapError(null);
+      setMapReady(true);
+      requestAnimationFrame(() => map.invalidateSize());
+    });
+
+    resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    resizeObserver.observe(containerRef.current);
 
     return () => {
       disposed = true;
       resizeObserver?.disconnect();
-      markersRef.current.forEach((m) => m.remove());
+      routesRef.current = [];
       markersRef.current = [];
-      map?.remove();
+      portsLayerRef.current = null;
+      tileLayerRef.current = null;
+      map.remove();
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [hasGeo]);
+  }, [hasGeo, interactive]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const apply = () => {
-      if (!map.isStyleLoaded()) return;
+    routesRef.current.forEach((line) => line.remove());
+    routesRef.current = [];
+    markersRef.current.forEach((marker) => marker.remove());
+    markersRef.current = [];
 
-      const routeSource = map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined;
-      if (routeSource) {
-        routeSource.setData(buildRouteGeoJson(geoShipments) as never);
-      } else {
-        ensureRouteLayer(map);
+    if (portsLayerRef.current) {
+      portsLayerRef.current.remove();
+      portsLayerRef.current = null;
+    }
+
+    const bounds = L.latLngBounds([]);
+
+    for (const s of geoShipments) {
+      const route = buildRouteLatLngs(s);
+      if (route.length >= 2) {
+        const line = L.polyline(route, {
+          color: '#4F6DF5',
+          weight: 2.5,
+          opacity: 0.85,
+        }).addTo(map);
+        routesRef.current.push(line);
+        route.forEach((point) => bounds.extend(point));
       }
 
-      if (showPorts) {
-        void import('@/lib/geoPorts').then(({ PORT_COORDINATES }) => {
-          if (!map.getSource(PORTS_SOURCE)) {
-            map.addSource(PORTS_SOURCE, {
-              type: 'geojson',
-              data: buildPortsGeoJson(PORT_COORDINATES) as never,
-            });
-            map.addLayer({
-              id: PORTS_LAYER,
-              type: 'circle',
-              source: PORTS_SOURCE,
-              paint: {
-                'circle-radius': 4,
-                'circle-color': '#94A3B8',
-                'circle-opacity': 0.7,
-                'circle-stroke-width': 1,
-                'circle-stroke-color': '#0B1020',
-              },
-            });
-          }
-        });
-      } else if (map.getLayer(PORTS_LAYER)) {
-        map.removeLayer(PORTS_LAYER);
-        if (map.getSource(PORTS_SOURCE)) map.removeSource(PORTS_SOURCE);
-      }
+      const addMarker = (
+        lat: number,
+        lng: number,
+        kind: 'origin' | 'destination' | 'current',
+        label: string
+      ) => {
+        const marker = L.marker([lat, lng], {
+          icon: createMarkerIcon(kind, s.id === selectedId),
+          keyboard: false,
+        })
+          .bindPopup(
+            `<div style="font:12px/1.4 system-ui,sans-serif;color:#0B1020">
+              <strong>${s.trackingNumber}</strong><br/>${label}<br/>${s.status}
+            </div>`
+          )
+          .addTo(map);
 
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-
-      const bounds = new LngLatBounds();
-      let hasBounds = false;
-
-      for (const s of geoShipments) {
-        const addMarker = (
-          lat: number,
-          lng: number,
-          kind: 'origin' | 'destination' | 'current',
-          label: string
-        ) => {
-          const el = document.createElement('button');
-          el.type = 'button';
-          el.setAttribute('aria-label', label);
-          el.className =
-            kind === 'current'
-              ? 'qv-map-marker qv-map-marker--current'
-              : kind === 'origin'
-                ? 'qv-map-marker qv-map-marker--origin'
-                : 'qv-map-marker qv-map-marker--destination';
-          if (s.id === selectedId) el.classList.add('qv-map-marker--selected');
-          el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            onSelect?.(s.id);
-          });
-
-          const marker = new Marker({ element: el, anchor: 'center' })
-            .setLngLat([lng, lat])
-            .setPopup(
-              new Popup({ offset: 12, closeButton: false }).setHTML(
-                `<div style="font:12px/1.4 system-ui,sans-serif;color:#0B1020">
-                  <strong>${s.trackingNumber}</strong><br/>${label}<br/>${s.status}
-                </div>`
-              )
-            )
-            .addTo(map);
-
-          markersRef.current.push(marker);
-          bounds.extend([lng, lat]);
-          hasBounds = true;
-        };
-
-        const origin = resolveOriginCoord(s);
-        const destination = resolveDestinationCoord(s);
-        if (origin) addMarker(origin[0], origin[1], 'origin', 'Origin');
-        if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
-        const current = resolveDisplayPosition(s);
-        if (current) addMarker(current[0], current[1], 'current', 'Current position');
-      }
-
-      const fitKey = `${selectedId ?? 'all'}:${geoShipments.map((s) => s.id).join(',')}`;
-      if (hasBounds && interactive && fitKey !== fittedKeyRef.current) {
-        fittedKeyRef.current = fitKey;
-        const selected = selectedId
-          ? geoShipments.find((s) => s.id === selectedId)
-          : undefined;
-        if (selected) {
-          const selectedBounds = new LngLatBounds();
-          let selectedHas = false;
-          const extend = (lat: number, lng: number) => {
-            selectedBounds.extend([lng, lat]);
-            selectedHas = true;
-          };
-          const o = resolveOriginCoord(selected);
-          const d = resolveDestinationCoord(selected);
-          if (o) extend(o[0], o[1]);
-          if (d) extend(d[0], d[1]);
-          const cur = resolveDisplayPosition(selected);
-          if (cur) extend(cur[0], cur[1]);
-          if (selectedHas) {
-            map.fitBounds(selectedBounds, {
-              padding: 56,
-              maxZoom: 6,
-              duration: reduceMotion ? 0 : 600,
-            });
-            return;
-          }
+        if (onSelect) {
+          marker.on('click', () => onSelect(s.id));
         }
-        map.fitBounds(bounds, {
-          padding: 56,
-          maxZoom: 6,
-          duration: reduceMotion ? 0 : 600,
-        });
+
+        markersRef.current.push(marker);
+        bounds.extend([lat, lng]);
+      };
+
+      const origin = resolveOriginCoord(s);
+      const destination = resolveDestinationCoord(s);
+      if (origin) addMarker(origin[0], origin[1], 'origin', 'Origin');
+      if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
+      const current = resolveDisplayPosition(s);
+      if (current) addMarker(current[0], current[1], 'current', 'Current position');
+    }
+
+    if (showPorts) {
+      const group = L.layerGroup();
+      for (const [name, [lat, lng]] of Object.entries(PORT_COORDINATES)) {
+        L.circleMarker([lat, lng], {
+          radius: 4,
+          color: '#0B1020',
+          weight: 1,
+          fillColor: '#94A3B8',
+          fillOpacity: 0.7,
+        })
+          .bindTooltip(name, { direction: 'top', opacity: 0.9 })
+          .addTo(group);
+      }
+      group.addTo(map);
+      portsLayerRef.current = group;
+    }
+
+    const fitKey = `${selectedId ?? 'all'}:${geoShipments.map((s) => s.id).join(',')}`;
+    if (bounds.isValid() && interactive && fitKey !== fittedKeyRef.current) {
+      fittedKeyRef.current = fitKey;
+
+      const selected = selectedId ? geoShipments.find((s) => s.id === selectedId) : undefined;
+      if (selected) {
+        const selectedBounds = L.latLngBounds([]);
+        const extend = (lat: number, lng: number) => {
+          selectedBounds.extend([lat, lng]);
+        };
+        const o = resolveOriginCoord(selected);
+        const d = resolveDestinationCoord(selected);
+        if (o) extend(o[0], o[1]);
+        if (d) extend(d[0], d[1]);
+        const cur = resolveDisplayPosition(selected);
+        if (cur) extend(cur[0], cur[1]);
+        if (selectedBounds.isValid()) {
+          map.fitBounds(selectedBounds, {
+            padding: [56, 56],
+            maxZoom: 6,
+            animate: !reduceMotion,
+            duration: reduceMotion ? 0 : 0.6,
+          });
+          return;
+        }
       }
 
-      requestAnimationFrame(() => map.resize());
-    };
+      map.fitBounds(bounds, {
+        padding: [56, 56],
+        maxZoom: 6,
+        animate: !reduceMotion,
+        duration: reduceMotion ? 0 : 0.6,
+      });
+    }
 
-    if (map.isStyleLoaded()) apply();
-    else map.once('load', apply);
+    requestAnimationFrame(() => map.invalidateSize());
   }, [geoShipments, selectedId, onSelect, showPorts, interactive, reduceMotion, mapReady]);
 
   if (!hasGeo) {
@@ -409,7 +367,7 @@ export function ShipmentMap({
     <div
       className={`relative overflow-hidden rounded-xl border border-white/10 min-h-[16rem] ${className}`}
     >
-      <div ref={containerRef} className="h-full w-full min-h-[inherit]" />
+      <div ref={containerRef} className="h-full w-full min-h-[inherit] z-0" />
       {!mapReady && !mapError && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-navy-900/40 text-xs text-text-secondary">
           Loading map…
@@ -428,6 +386,7 @@ export function ShipmentMap({
           border: 2px solid #0B1020;
           cursor: pointer;
           padding: 0;
+          display: block;
         }
         .qv-map-marker--origin { background: #94A3B8; }
         .qv-map-marker--destination { background: #22C55E; }
@@ -441,9 +400,23 @@ export function ShipmentMap({
           outline: 2px solid #fff;
           outline-offset: 2px;
         }
-        .maplibregl-popup-content { border-radius: 8px; padding: 8px 10px; }
-        .maplibregl-map { height: 100%; width: 100%; }
-        .maplibregl-canvas { width: 100% !important; height: 100% !important; }
+        .leaflet-container {
+          height: 100%;
+          width: 100%;
+          background: #0B1020;
+          font: inherit;
+        }
+        .leaflet-control-attribution {
+          font-size: 10px;
+          background: rgba(11, 16, 32, 0.85) !important;
+          color: #94A3B8 !important;
+        }
+        .leaflet-control-attribution a {
+          color: #94A3B8;
+        }
+        .leaflet-popup-content-wrapper {
+          border-radius: 8px;
+        }
       `}</style>
     </div>
   );
