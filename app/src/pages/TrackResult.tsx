@@ -185,8 +185,7 @@ const TrackResult = () => {
               />
             ) : (
               <p className="px-5 sm:px-6 pb-5 text-sm text-text-secondary">
-                Map appears once the shipment has a locatable origin, destination, or current address
-                from an admin update.
+                Map appears once the shipment has a locatable origin, destination, or current address.
               </p>
             )}
           </div>

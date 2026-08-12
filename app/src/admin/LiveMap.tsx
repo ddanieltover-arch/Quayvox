@@ -173,9 +173,13 @@ const LiveMap = () => {
                       <MapPin className="w-3 h-3 shrink-0" />
                       {s.currentLocationUpdatedAt
                         ? `Updated ${new Date(s.currentLocationUpdatedAt).toLocaleString()}`
-                        : pos
-                          ? 'Estimated from progress'
-                          : 'No coordinates yet'}
+                        : s.currentLat != null && s.currentLng != null
+                          ? 'Pinned location'
+                          : pos
+                            ? 'Estimated from progress'
+                            : s.origin || s.destination || s.currentAddress
+                              ? 'Locating address…'
+                              : 'No coordinates yet'}
                     </p>
                   </button>
                 </li>

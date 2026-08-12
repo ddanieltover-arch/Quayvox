@@ -1,10 +1,18 @@
 import { lookupPortCoords, type GeoCoord } from './geoPorts';
 
 const cache = new Map<string, GeoCoord | null>();
-let lastNominatimAt = 0;
+let lastRemoteAt = 0;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function throttleRemote() {
+  const elapsed = Date.now() - lastRemoteAt;
+  if (elapsed < 1100) {
+    await sleep(1100 - elapsed);
+  }
+  lastRemoteAt = Date.now();
 }
 
 /** Parse pasted coordinates like "34.0522, -118.2437". */
@@ -22,11 +30,7 @@ export function parseCoordPair(input: string): GeoCoord | null {
 }
 
 async function geocodeWithNominatim(address: string): Promise<GeoCoord | null> {
-  const elapsed = Date.now() - lastNominatimAt;
-  if (elapsed < 1100) {
-    await sleep(1100 - elapsed);
-  }
-  lastNominatimAt = Date.now();
+  await throttleRemote();
 
   const url = new URL('https://nominatim.openstreetmap.org/search');
   url.searchParams.set('q', address);
@@ -55,6 +59,35 @@ async function geocodeWithNominatim(address: string): Promise<GeoCoord | null> {
   return [lat, lng];
 }
 
+async function geocodeWithPhoton(address: string): Promise<GeoCoord | null> {
+  await throttleRemote();
+
+  const url = new URL('https://photon.komoot.io/api/');
+  url.searchParams.set('q', address);
+  url.searchParams.set('limit', '1');
+
+  const res = await fetch(url.toString(), {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!res.ok) {
+    console.warn('geocode photon failed', res.status, address);
+    return null;
+  }
+
+  const data = (await res.json()) as {
+    features?: Array<{ geometry?: { coordinates?: number[] } }>;
+  };
+  const coords = data.features?.[0]?.geometry?.coordinates;
+  if (!coords || coords.length < 2) return null;
+
+  const lng = Number(coords[0]);
+  const lat = Number(coords[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return [lat, lng];
+}
+
 /** Resolve an address or place name to coordinates. */
 export async function geocodeAddress(address: string): Promise<GeoCoord | null> {
   const trimmed = address.trim();
@@ -76,13 +109,23 @@ export async function geocodeAddress(address: string): Promise<GeoCoord | null> 
   }
 
   try {
-    const remote = await geocodeWithNominatim(trimmed);
+    let remote = await geocodeWithNominatim(trimmed);
+    if (!remote) {
+      remote = await geocodeWithPhoton(trimmed);
+    }
     cache.set(key, remote);
     return remote;
   } catch (err) {
     console.warn('geocode error', err);
-    cache.set(key, null);
-    return null;
+    try {
+      const fallback = await geocodeWithPhoton(trimmed);
+      cache.set(key, fallback);
+      return fallback;
+    } catch (fallbackErr) {
+      console.warn('geocode fallback error', fallbackErr);
+      cache.set(key, null);
+      return null;
+    }
   }
 }
 
@@ -96,6 +139,27 @@ function asNullableString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const s = String(value).trim();
   return s.length ? s : null;
+}
+
+function needsGeoEnrichment(row: Record<string, unknown>): boolean {
+  const originText =
+    asNullableString(row.sender_address) || asNullableString(row.origin) || '';
+  const destinationText =
+    asNullableString(row.receiver_address) || asNullableString(row.destination) || '';
+  const currentText = asNullableString(row.current_address);
+
+  const missingOrigin =
+    Boolean(originText) &&
+    (asNullableNumber(row.origin_lat) == null || asNullableNumber(row.origin_lng) == null);
+  const missingDestination =
+    Boolean(destinationText) &&
+    (asNullableNumber(row.destination_lat) == null ||
+      asNullableNumber(row.destination_lng) == null);
+  const missingCurrent =
+    Boolean(currentText) &&
+    (asNullableNumber(row.current_lat) == null || asNullableNumber(row.current_lng) == null);
+
+  return missingOrigin || missingDestination || missingCurrent;
 }
 
 /**
@@ -160,3 +224,5 @@ export async function enrichShipmentGeo(
 
   return next;
 }
+
+export { needsGeoEnrichment };

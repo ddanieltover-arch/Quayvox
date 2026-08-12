@@ -1875,9 +1875,16 @@ function lookupPortCoords(place) {
 
 // api/_lib/geocode.ts
 var cache = /* @__PURE__ */ new Map();
-var lastNominatimAt = 0;
+var lastRemoteAt = 0;
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function throttleRemote() {
+  const elapsed = Date.now() - lastRemoteAt;
+  if (elapsed < 1100) {
+    await sleep(1100 - elapsed);
+  }
+  lastRemoteAt = Date.now();
 }
 function parseCoordPair(input) {
   const trimmed = input.trim();
@@ -1892,11 +1899,7 @@ function parseCoordPair(input) {
   return [lat, lng];
 }
 async function geocodeWithNominatim(address) {
-  const elapsed = Date.now() - lastNominatimAt;
-  if (elapsed < 1100) {
-    await sleep(1100 - elapsed);
-  }
-  lastNominatimAt = Date.now();
+  await throttleRemote();
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", address);
   url.searchParams.set("format", "json");
@@ -1919,6 +1922,27 @@ async function geocodeWithNominatim(address) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return [lat, lng];
 }
+async function geocodeWithPhoton(address) {
+  await throttleRemote();
+  const url = new URL("https://photon.komoot.io/api/");
+  url.searchParams.set("q", address);
+  url.searchParams.set("limit", "1");
+  const res = await fetch(url.toString(), {
+    headers: { Accept: "application/json" }
+  });
+  if (!res.ok) {
+    console.warn("geocode photon failed", res.status, address);
+    return null;
+  }
+  const data = await res.json();
+  const coords = data.features?.[0]?.geometry?.coordinates;
+  if (!coords || coords.length < 2) return null;
+  const lng = Number(coords[0]);
+  const lat = Number(coords[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return [lat, lng];
+}
 async function geocodeAddress(address) {
   const trimmed = address.trim();
   if (!trimmed) return null;
@@ -1935,13 +1959,23 @@ async function geocodeAddress(address) {
     return parsed;
   }
   try {
-    const remote = await geocodeWithNominatim(trimmed);
+    let remote = await geocodeWithNominatim(trimmed);
+    if (!remote) {
+      remote = await geocodeWithPhoton(trimmed);
+    }
     cache.set(key, remote);
     return remote;
   } catch (err) {
     console.warn("geocode error", err);
-    cache.set(key, null);
-    return null;
+    try {
+      const fallback = await geocodeWithPhoton(trimmed);
+      cache.set(key, fallback);
+      return fallback;
+    } catch (fallbackErr) {
+      console.warn("geocode fallback error", fallbackErr);
+      cache.set(key, null);
+      return null;
+    }
   }
 }
 function asNullableNumber(value) {
@@ -1953,6 +1987,15 @@ function asNullableString(value) {
   if (value === null || value === void 0) return null;
   const s2 = String(value).trim();
   return s2.length ? s2 : null;
+}
+function needsGeoEnrichment(row) {
+  const originText = asNullableString(row.sender_address) || asNullableString(row.origin) || "";
+  const destinationText = asNullableString(row.receiver_address) || asNullableString(row.destination) || "";
+  const currentText = asNullableString(row.current_address);
+  const missingOrigin = Boolean(originText) && (asNullableNumber(row.origin_lat) == null || asNullableNumber(row.origin_lng) == null);
+  const missingDestination = Boolean(destinationText) && (asNullableNumber(row.destination_lat) == null || asNullableNumber(row.destination_lng) == null);
+  const missingCurrent = Boolean(currentText) && (asNullableNumber(row.current_lat) == null || asNullableNumber(row.current_lng) == null);
+  return missingOrigin || missingDestination || missingCurrent;
 }
 async function enrichShipmentGeo(payload, options) {
   const next = { ...payload };
@@ -2089,7 +2132,63 @@ function resolveGeoDefaults(payload) {
 }
 async function listShipments() {
   const sql = getSql();
-  return sql`select * from public.shipments order by created_at desc`;
+  const rows = await sql`select * from public.shipments order by created_at desc`;
+  const enriched = [];
+  let backfilled = 0;
+  for (const row of rows) {
+    if (backfilled < 1 && needsGeoEnrichment(row)) {
+      enriched.push(await persistMissingShipmentGeo(row));
+      backfilled += 1;
+    } else {
+      enriched.push(row);
+    }
+  }
+  return enriched;
+}
+async function persistMissingShipmentGeo(row) {
+  if (!needsGeoEnrichment(row)) return row;
+  const enriched = await enrichShipmentGeo(row);
+  const id = String(row.id);
+  const originLat = asNullableNumber2(enriched.origin_lat);
+  const originLng = asNullableNumber2(enriched.origin_lng);
+  const destinationLat = asNullableNumber2(enriched.destination_lat);
+  const destinationLng = asNullableNumber2(enriched.destination_lng);
+  const currentLat = asNullableNumber2(enriched.current_lat);
+  const currentLng = asNullableNumber2(enriched.current_lng);
+  const changed = originLat !== asNullableNumber2(row.origin_lat) || originLng !== asNullableNumber2(row.origin_lng) || destinationLat !== asNullableNumber2(row.destination_lat) || destinationLng !== asNullableNumber2(row.destination_lng) || currentLat !== asNullableNumber2(row.current_lat) || currentLng !== asNullableNumber2(row.current_lng);
+  if (!changed) return row;
+  const currentUpdated = currentLat != null && currentLng != null && (currentLat !== asNullableNumber2(row.current_lat) || currentLng !== asNullableNumber2(row.current_lng));
+  const sql = getSql();
+  const updated = await sql`
+    update public.shipments set
+      origin_lat = ${originLat},
+      origin_lng = ${originLng},
+      destination_lat = ${destinationLat},
+      destination_lng = ${destinationLng},
+      current_lat = ${currentLat},
+      current_lng = ${currentLng},
+      current_location_updated_at = ${currentUpdated ? /* @__PURE__ */ new Date() : row.current_location_updated_at ? new Date(String(row.current_location_updated_at)) : null}
+    where id = ${id}
+    returning *
+  `;
+  const next = updated[0] ?? {
+    ...row,
+    origin_lat: originLat,
+    origin_lng: originLng,
+    destination_lat: destinationLat,
+    destination_lng: destinationLng,
+    current_lat: currentLat,
+    current_lng: currentLng
+  };
+  if (currentUpdated && currentLat != null && currentLng != null && asNullableString2(row.current_address)) {
+    await insertShipmentPosition({
+      shipment_id: id,
+      lat: currentLat,
+      lng: currentLng,
+      label: asNullableString2(row.current_address)
+    });
+  }
+  return next;
 }
 async function getShipmentById(id) {
   const sql = getSql();
@@ -2105,7 +2204,9 @@ async function getShipmentByTracking(tracking) {
        or tracking_number = ${trimmed.toUpperCase()}
     limit 1
   `;
-  return rows[0] ?? null;
+  const row = rows[0] ?? null;
+  if (!row) return null;
+  return persistMissingShipmentGeo(row);
 }
 async function getEventsByTracking(tracking) {
   const sql = getSql();
@@ -2400,13 +2501,44 @@ async function handleContact(req, res) {
   });
 }
 
-// api/_lib/handlers/notify-shipment.ts
+// api/_lib/handlers/geocode.ts
 var import_zod3 = require("zod");
-var bodySchema2 = import_zod3.z.object({
-  trackingNumber: import_zod3.z.string().trim().min(3).max(64),
-  status: import_zod3.z.string().trim().min(1).max(64).optional(),
-  customerEmail: import_zod3.z.string().trim().email().optional(),
-  notifyCustomer: import_zod3.z.boolean().optional()
+var querySchema = import_zod3.z.object({
+  q: import_zod3.z.string().trim().min(2).max(300)
+});
+async function handleGeocode(req, res) {
+  if (handleOptions(req, res, "GET, OPTIONS")) return;
+  if (req.method !== "GET") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+  const parsed = querySchema.safeParse({
+    q: typeof req.query.q === "string" ? req.query.q : ""
+  });
+  if (!parsed.success) {
+    res.status(400).json({ error: "Missing address query (q)" });
+    return;
+  }
+  try {
+    const coords = await geocodeAddress(parsed.data.q);
+    if (!coords) {
+      res.status(200).json({ lat: null, lng: null, found: false });
+      return;
+    }
+    res.status(200).json({ lat: coords[0], lng: coords[1], found: true });
+  } catch (err) {
+    console.error("geocode", err);
+    res.status(500).json({ error: "Failed to geocode address" });
+  }
+}
+
+// api/_lib/handlers/notify-shipment.ts
+var import_zod4 = require("zod");
+var bodySchema2 = import_zod4.z.object({
+  trackingNumber: import_zod4.z.string().trim().min(3).max(64),
+  status: import_zod4.z.string().trim().min(1).max(64).optional(),
+  customerEmail: import_zod4.z.string().trim().email().optional(),
+  notifyCustomer: import_zod4.z.boolean().optional()
 });
 async function handleNotifyShipment(req, res) {
   if (handleOptions(req, res, "POST, OPTIONS")) return;
@@ -2466,55 +2598,55 @@ async function handleNotifyShipment(req, res) {
 }
 
 // api/_lib/handlers/shipments.ts
-var import_zod4 = require("zod");
-var nullableNumber = import_zod4.z.number().finite().nullable().optional();
-var optionalEmail = import_zod4.z.union([import_zod4.z.string().email(), import_zod4.z.literal(""), import_zod4.z.null()]).optional().transform((v) => v === "" || v === void 0 ? null : v);
+var import_zod5 = require("zod");
+var nullableNumber = import_zod5.z.number().finite().nullable().optional();
+var optionalEmail = import_zod5.z.union([import_zod5.z.string().email(), import_zod5.z.literal(""), import_zod5.z.null()]).optional().transform((v) => v === "" || v === void 0 ? null : v);
 var partyFields = {
-  sender_name: import_zod4.z.string().optional(),
-  sender_phone: import_zod4.z.string().optional(),
+  sender_name: import_zod5.z.string().optional(),
+  sender_phone: import_zod5.z.string().optional(),
   sender_email: optionalEmail,
-  sender_address: import_zod4.z.string().optional(),
-  sender_street: import_zod4.z.string().optional(),
-  sender_city: import_zod4.z.string().optional(),
-  sender_state: import_zod4.z.string().nullable().optional(),
-  sender_postal: import_zod4.z.string().nullable().optional(),
-  sender_country: import_zod4.z.string().optional(),
-  receiver_name: import_zod4.z.string().optional(),
-  receiver_phone: import_zod4.z.string().optional(),
+  sender_address: import_zod5.z.string().optional(),
+  sender_street: import_zod5.z.string().optional(),
+  sender_city: import_zod5.z.string().optional(),
+  sender_state: import_zod5.z.string().nullable().optional(),
+  sender_postal: import_zod5.z.string().nullable().optional(),
+  sender_country: import_zod5.z.string().optional(),
+  receiver_name: import_zod5.z.string().optional(),
+  receiver_phone: import_zod5.z.string().optional(),
   receiver_email: optionalEmail,
-  receiver_address: import_zod4.z.string().optional(),
-  receiver_street: import_zod4.z.string().optional(),
-  receiver_city: import_zod4.z.string().optional(),
-  receiver_state: import_zod4.z.string().nullable().optional(),
-  receiver_postal: import_zod4.z.string().nullable().optional(),
-  receiver_country: import_zod4.z.string().optional(),
-  current_address: import_zod4.z.string().nullable().optional(),
-  departure_at: import_zod4.z.string().nullable().optional(),
-  delivery_at: import_zod4.z.string().nullable().optional(),
-  volume: import_zod4.z.number().optional(),
-  payment_method: import_zod4.z.string().optional()
+  receiver_address: import_zod5.z.string().optional(),
+  receiver_street: import_zod5.z.string().optional(),
+  receiver_city: import_zod5.z.string().optional(),
+  receiver_state: import_zod5.z.string().nullable().optional(),
+  receiver_postal: import_zod5.z.string().nullable().optional(),
+  receiver_country: import_zod5.z.string().optional(),
+  current_address: import_zod5.z.string().nullable().optional(),
+  departure_at: import_zod5.z.string().nullable().optional(),
+  delivery_at: import_zod5.z.string().nullable().optional(),
+  volume: import_zod5.z.number().optional(),
+  payment_method: import_zod5.z.string().optional()
 };
-var createSchema = import_zod4.z.object({
-  tracking_number: import_zod4.z.string().trim().min(3).max(64),
-  origin: import_zod4.z.string().trim().min(1),
-  destination: import_zod4.z.string().trim().min(1),
-  carrier: import_zod4.z.string().trim().min(1),
-  status: import_zod4.z.enum(["Pending", "In Transit", "Customs", "Delivered", "Exception"]),
-  weight: import_zod4.z.number(),
-  dim_l: import_zod4.z.number(),
-  dim_w: import_zod4.z.number(),
-  dim_h: import_zod4.z.number(),
-  cost: import_zod4.z.number(),
-  eta: import_zod4.z.string().nullable().optional(),
-  progress: import_zod4.z.number().int().min(0).max(100),
-  mode: import_zod4.z.enum(["Air", "Ocean", "Rail", "Road"]),
-  priority: import_zod4.z.enum(["Express", "Standard", "Economy"]),
-  shipper: import_zod4.z.string(),
-  consignee: import_zod4.z.string(),
-  documents: import_zod4.z.array(import_zod4.z.string()).optional(),
-  tags: import_zod4.z.array(import_zod4.z.string()).optional(),
+var createSchema = import_zod5.z.object({
+  tracking_number: import_zod5.z.string().trim().min(3).max(64),
+  origin: import_zod5.z.string().trim().min(1),
+  destination: import_zod5.z.string().trim().min(1),
+  carrier: import_zod5.z.string().trim().min(1),
+  status: import_zod5.z.enum(["Pending", "In Transit", "Customs", "Delivered", "Exception"]),
+  weight: import_zod5.z.number(),
+  dim_l: import_zod5.z.number(),
+  dim_w: import_zod5.z.number(),
+  dim_h: import_zod5.z.number(),
+  cost: import_zod5.z.number(),
+  eta: import_zod5.z.string().nullable().optional(),
+  progress: import_zod5.z.number().int().min(0).max(100),
+  mode: import_zod5.z.enum(["Air", "Ocean", "Rail", "Road"]),
+  priority: import_zod5.z.enum(["Express", "Standard", "Economy"]),
+  shipper: import_zod5.z.string(),
+  consignee: import_zod5.z.string(),
+  documents: import_zod5.z.array(import_zod5.z.string()).optional(),
+  tags: import_zod5.z.array(import_zod5.z.string()).optional(),
   customer_email: optionalEmail,
-  notes: import_zod4.z.string().nullable().optional(),
+  notes: import_zod5.z.string().nullable().optional(),
   ...partyFields,
   origin_lat: nullableNumber,
   origin_lng: nullableNumber,
@@ -2523,27 +2655,27 @@ var createSchema = import_zod4.z.object({
   current_lat: nullableNumber,
   current_lng: nullableNumber
 });
-var patchSchema = import_zod4.z.object({
-  tracking_number: import_zod4.z.string().trim().min(3).max(64).optional(),
-  origin: import_zod4.z.string().trim().min(1).optional(),
-  destination: import_zod4.z.string().trim().min(1).optional(),
-  carrier: import_zod4.z.string().trim().min(1).optional(),
-  status: import_zod4.z.enum(["Pending", "In Transit", "Customs", "Delivered", "Exception"]).optional(),
-  weight: import_zod4.z.number().optional(),
-  dim_l: import_zod4.z.number().optional(),
-  dim_w: import_zod4.z.number().optional(),
-  dim_h: import_zod4.z.number().optional(),
-  cost: import_zod4.z.number().optional(),
-  eta: import_zod4.z.string().nullable().optional(),
-  progress: import_zod4.z.number().int().min(0).max(100).optional(),
-  mode: import_zod4.z.enum(["Air", "Ocean", "Rail", "Road"]).optional(),
-  priority: import_zod4.z.enum(["Express", "Standard", "Economy"]).optional(),
-  shipper: import_zod4.z.string().optional(),
-  consignee: import_zod4.z.string().optional(),
-  documents: import_zod4.z.array(import_zod4.z.string()).optional(),
-  tags: import_zod4.z.array(import_zod4.z.string()).optional(),
+var patchSchema = import_zod5.z.object({
+  tracking_number: import_zod5.z.string().trim().min(3).max(64).optional(),
+  origin: import_zod5.z.string().trim().min(1).optional(),
+  destination: import_zod5.z.string().trim().min(1).optional(),
+  carrier: import_zod5.z.string().trim().min(1).optional(),
+  status: import_zod5.z.enum(["Pending", "In Transit", "Customs", "Delivered", "Exception"]).optional(),
+  weight: import_zod5.z.number().optional(),
+  dim_l: import_zod5.z.number().optional(),
+  dim_w: import_zod5.z.number().optional(),
+  dim_h: import_zod5.z.number().optional(),
+  cost: import_zod5.z.number().optional(),
+  eta: import_zod5.z.string().nullable().optional(),
+  progress: import_zod5.z.number().int().min(0).max(100).optional(),
+  mode: import_zod5.z.enum(["Air", "Ocean", "Rail", "Road"]).optional(),
+  priority: import_zod5.z.enum(["Express", "Standard", "Economy"]).optional(),
+  shipper: import_zod5.z.string().optional(),
+  consignee: import_zod5.z.string().optional(),
+  documents: import_zod5.z.array(import_zod5.z.string()).optional(),
+  tags: import_zod5.z.array(import_zod5.z.string()).optional(),
   customer_email: optionalEmail,
-  notes: import_zod4.z.string().nullable().optional(),
+  notes: import_zod5.z.string().nullable().optional(),
   ...partyFields,
   origin_lat: nullableNumber,
   origin_lng: nullableNumber,
@@ -2551,10 +2683,10 @@ var patchSchema = import_zod4.z.object({
   destination_lng: nullableNumber,
   current_lat: nullableNumber,
   current_lng: nullableNumber,
-  position_label: import_zod4.z.string().trim().max(200).nullable().optional(),
-  eventMessage: import_zod4.z.string().optional(),
-  eventLocation: import_zod4.z.string().optional(),
-  notifyCustomer: import_zod4.z.boolean().optional()
+  position_label: import_zod5.z.string().trim().max(200).nullable().optional(),
+  eventMessage: import_zod5.z.string().optional(),
+  eventLocation: import_zod5.z.string().optional(),
+  notifyCustomer: import_zod5.z.boolean().optional()
 }).strict();
 async function handleShipmentsCollection(req, res) {
   if (handleOptions(req, res, "GET, POST, OPTIONS")) return;
@@ -2787,6 +2919,10 @@ async function routeRequest(req, res) {
   }
   if (root === "track" && second) {
     await handleTrack(req, res, second);
+    return;
+  }
+  if (root === "geocode" && !second) {
+    await handleGeocode(req, res);
     return;
   }
   if (root === "contact" && !second) {

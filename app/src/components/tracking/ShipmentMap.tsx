@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MAP_TILE_LAYERS } from '@/lib/mapConfig';
 import { interpolateCoords, lookupPortCoords, PORT_COORDINATES, type GeoCoord } from '@/lib/geoPorts';
+import { geocodeAddressClient } from '@/lib/geocodeClient';
 import type { ShipmentPosition } from '@/lib/shipments';
 
 export interface MapShipmentGeo {
@@ -77,6 +78,9 @@ export function resolveDisplayPosition(s: MapShipmentGeo): GeoCoord | null {
   if (origin && destination) {
     return interpolateCoords(origin, destination, s.progress);
   }
+  // Pending / incomplete routes still show a pin at the known end.
+  if (origin) return origin;
+  if (destination) return destination;
   return null;
 }
 
@@ -88,8 +92,44 @@ function shipmentHasGeo(s: MapShipmentGeo): boolean {
   );
 }
 
+function shipmentHasAddress(s: MapShipmentGeo): boolean {
+  return Boolean(
+    s.origin?.trim() || s.destination?.trim() || s.currentAddress?.trim()
+  );
+}
+
 export function shipmentHasMapGeo(s: MapShipmentGeo): boolean {
-  return shipmentHasGeo(s);
+  return shipmentHasGeo(s) || shipmentHasAddress(s);
+}
+
+async function resolveShipmentGeo(s: MapShipmentGeo): Promise<MapShipmentGeo> {
+  const next: MapShipmentGeo = { ...s };
+
+  if (!isValidCoord(next.originLat, next.originLng) && next.origin?.trim()) {
+    const coords = await geocodeAddressClient(next.origin);
+    if (coords) {
+      next.originLat = coords[0];
+      next.originLng = coords[1];
+    }
+  }
+
+  if (!isValidCoord(next.destinationLat, next.destinationLng) && next.destination?.trim()) {
+    const coords = await geocodeAddressClient(next.destination);
+    if (coords) {
+      next.destinationLat = coords[0];
+      next.destinationLng = coords[1];
+    }
+  }
+
+  if (!isValidCoord(next.currentLat, next.currentLng) && next.currentAddress?.trim()) {
+    const coords = await geocodeAddressClient(next.currentAddress);
+    if (coords) {
+      next.currentLat = coords[0];
+      next.currentLng = coords[1];
+    }
+  }
+
+  return next;
 }
 
 function buildRouteLatLngs(s: MapShipmentGeo): L.LatLngExpression[] {
@@ -162,6 +202,8 @@ export function ShipmentMap({
   const tileIndexRef = useRef(0);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [resolvedShipments, setResolvedShipments] = useState<MapShipmentGeo[]>(shipments);
+  const [locating, setLocating] = useState(false);
 
   const reduceMotion = useMemo(
     () =>
@@ -170,8 +212,49 @@ export function ShipmentMap({
     []
   );
 
-  const geoShipments = useMemo(() => shipments.filter(shipmentHasGeo), [shipments]);
+  useEffect(() => {
+    let cancelled = false;
+
+    const needsLookup = shipments.some(
+      (s) =>
+        (!isValidCoord(s.originLat, s.originLng) && Boolean(s.origin?.trim())) ||
+        (!isValidCoord(s.destinationLat, s.destinationLng) && Boolean(s.destination?.trim())) ||
+        (!isValidCoord(s.currentLat, s.currentLng) && Boolean(s.currentAddress?.trim()))
+    );
+
+    if (!needsLookup) {
+      setResolvedShipments(shipments);
+      setLocating(false);
+      return;
+    }
+
+    setLocating(true);
+    setResolvedShipments(shipments);
+
+    void (async () => {
+      const next: MapShipmentGeo[] = [];
+      for (const shipment of shipments) {
+        if (cancelled) return;
+        next.push(await resolveShipmentGeo(shipment));
+      }
+      if (!cancelled) {
+        setResolvedShipments(next);
+        setLocating(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shipments]);
+
+  const geoShipments = useMemo(
+    () => resolvedShipments.filter(shipmentHasGeo),
+    [resolvedShipments]
+  );
   const hasGeo = geoShipments.length > 0;
+  const hasAddressOnly =
+    !hasGeo && resolvedShipments.some(shipmentHasAddress);
 
   useEffect(() => {
     if (!hasGeo || !containerRef.current) return;
@@ -388,7 +471,9 @@ export function ShipmentMap({
       <div
         className={`flex items-center justify-center rounded-xl border border-white/10 bg-navy-900/60 text-sm text-text-secondary min-h-[16rem] px-4 text-center ${className}`}
       >
-        Map appears once origin, destination, or a current address can be located
+        {locating || hasAddressOnly
+          ? 'Locating address on map…'
+          : 'Map appears once origin, destination, or a current address can be located'}
       </div>
     );
   }

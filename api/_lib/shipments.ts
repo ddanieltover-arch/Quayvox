@@ -1,6 +1,6 @@
 import { getSql } from './db';
 import { lookupPortCoords } from './geoPorts';
-import { enrichShipmentGeo } from './geocode';
+import { enrichShipmentGeo, needsGeoEnrichment } from './geocode';
 
 const UPDATE_COLUMNS = new Set([
   'tracking_number',
@@ -103,7 +103,100 @@ export function resolveGeoDefaults(payload: Record<string, unknown>): Record<str
 
 export async function listShipments() {
   const sql = getSql();
-  return sql`select * from public.shipments order by created_at desc`;
+  const rows = await sql`select * from public.shipments order by created_at desc`;
+  const enriched: Record<string, unknown>[] = [];
+  let backfilled = 0;
+
+  for (const row of rows as Record<string, unknown>[]) {
+    // Backfill at most one shipment per list request to stay within serverless limits.
+    if (backfilled < 1 && needsGeoEnrichment(row)) {
+      enriched.push(await persistMissingShipmentGeo(row));
+      backfilled += 1;
+    } else {
+      enriched.push(row);
+    }
+  }
+
+  return enriched;
+}
+
+/** Geocode missing address fields and persist lat/lng without triggering notifications. */
+export async function persistMissingShipmentGeo(
+  row: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  if (!needsGeoEnrichment(row)) return row;
+
+  const enriched = await enrichShipmentGeo(row);
+  const id = String(row.id);
+
+  const originLat = asNullableNumber(enriched.origin_lat);
+  const originLng = asNullableNumber(enriched.origin_lng);
+  const destinationLat = asNullableNumber(enriched.destination_lat);
+  const destinationLng = asNullableNumber(enriched.destination_lng);
+  const currentLat = asNullableNumber(enriched.current_lat);
+  const currentLng = asNullableNumber(enriched.current_lng);
+
+  const changed =
+    originLat !== asNullableNumber(row.origin_lat) ||
+    originLng !== asNullableNumber(row.origin_lng) ||
+    destinationLat !== asNullableNumber(row.destination_lat) ||
+    destinationLng !== asNullableNumber(row.destination_lng) ||
+    currentLat !== asNullableNumber(row.current_lat) ||
+    currentLng !== asNullableNumber(row.current_lng);
+
+  if (!changed) return row;
+
+  const currentUpdated =
+    currentLat != null &&
+    currentLng != null &&
+    (currentLat !== asNullableNumber(row.current_lat) ||
+      currentLng !== asNullableNumber(row.current_lng));
+
+  const sql = getSql();
+  const updated = await sql`
+    update public.shipments set
+      origin_lat = ${originLat},
+      origin_lng = ${originLng},
+      destination_lat = ${destinationLat},
+      destination_lng = ${destinationLng},
+      current_lat = ${currentLat},
+      current_lng = ${currentLng},
+      current_location_updated_at = ${
+        currentUpdated
+          ? new Date()
+          : row.current_location_updated_at
+            ? new Date(String(row.current_location_updated_at))
+            : null
+      }
+    where id = ${id}
+    returning *
+  `;
+
+  const next = (updated[0] as Record<string, unknown> | undefined) ?? {
+    ...row,
+    origin_lat: originLat,
+    origin_lng: originLng,
+    destination_lat: destinationLat,
+    destination_lng: destinationLng,
+    current_lat: currentLat,
+    current_lng: currentLng,
+  };
+
+  if (
+    currentUpdated &&
+    currentLat != null &&
+    currentLng != null &&
+    asNullableString(row.current_address)
+  ) {
+    await insertShipmentPosition({
+      shipment_id: id,
+      lat: currentLat,
+      lng: currentLng,
+      label: asNullableString(row.current_address),
+    });
+  }
+
+  return next;
 }
 
 export async function getShipmentById(id: string) {
@@ -121,7 +214,9 @@ export async function getShipmentByTracking(tracking: string) {
        or tracking_number = ${trimmed.toUpperCase()}
     limit 1
   `;
-  return rows[0] ?? null;
+  const row = (rows[0] as Record<string, unknown> | undefined) ?? null;
+  if (!row) return null;
+  return persistMissingShipmentGeo(row);
 }
 
 export async function getEventsByShipmentId(shipmentId: string) {
