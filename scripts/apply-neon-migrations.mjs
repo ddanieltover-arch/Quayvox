@@ -26,11 +26,19 @@ const client = new pg.Client({
   ssl: { rejectUnauthorized: false },
 });
 
+const migrations = [
+  '001_init.sql',
+  '002_seed_shipments.sql',
+  '003_shipment_geo.sql',
+  '004_shipment_party_details.sql',
+];
+
 await client.connect();
-await client.query(readFileSync(join(root, 'neon/migrations/001_init.sql'), 'utf8'));
-console.log('applied neon/migrations/001_init.sql');
-await client.query(readFileSync(join(root, 'neon/migrations/002_seed_shipments.sql'), 'utf8'));
-console.log('applied neon/migrations/002_seed_shipments.sql');
+for (const file of migrations) {
+  const path = join(root, 'neon/migrations', file);
+  await client.query(readFileSync(path, 'utf8'));
+  console.log(`applied neon/migrations/${file}`);
+}
 const result = await client.query('select count(*)::int as n from shipments');
 console.log('shipments=', result.rows[0].n);
 await client.end();

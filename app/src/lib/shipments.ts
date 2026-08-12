@@ -45,6 +45,26 @@ export interface ShipmentRow {
   tags: string[] | null;
   customer_email: string | null;
   notes: string | null;
+  sender_name?: string | null;
+  sender_phone?: string | null;
+  sender_email?: string | null;
+  sender_street?: string | null;
+  sender_city?: string | null;
+  sender_state?: string | null;
+  sender_postal?: string | null;
+  sender_country?: string | null;
+  receiver_name?: string | null;
+  receiver_phone?: string | null;
+  receiver_email?: string | null;
+  receiver_street?: string | null;
+  receiver_city?: string | null;
+  receiver_state?: string | null;
+  receiver_postal?: string | null;
+  receiver_country?: string | null;
+  departure_at?: string | null;
+  delivery_at?: string | null;
+  volume?: number | null;
+  payment_method?: string | null;
   origin_lat?: number | null;
   origin_lng?: number | null;
   destination_lat?: number | null;
@@ -114,6 +134,26 @@ export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
     tags: row.tags ?? [],
     customerEmail: row.customer_email,
     notes: row.notes,
+    senderName: row.sender_name ?? row.shipper ?? '',
+    senderPhone: row.sender_phone ?? '',
+    senderEmail: row.sender_email ?? null,
+    senderStreet: row.sender_street ?? '',
+    senderCity: row.sender_city ?? '',
+    senderState: row.sender_state ?? null,
+    senderPostal: row.sender_postal ?? null,
+    senderCountry: row.sender_country ?? '',
+    receiverName: row.receiver_name ?? row.consignee ?? '',
+    receiverPhone: row.receiver_phone ?? '',
+    receiverEmail: row.receiver_email ?? row.customer_email ?? null,
+    receiverStreet: row.receiver_street ?? '',
+    receiverCity: row.receiver_city ?? '',
+    receiverState: row.receiver_state ?? null,
+    receiverPostal: row.receiver_postal ?? null,
+    receiverCountry: row.receiver_country ?? '',
+    departureAt: row.departure_at ?? null,
+    deliveryAt: row.delivery_at ?? null,
+    volume: row.volume != null ? Number(row.volume) : 0,
+    paymentMethod: row.payment_method ?? '',
     originLat: asNullableNumber(row.origin_lat),
     originLng: asNullableNumber(row.origin_lng),
     destinationLat: asNullableNumber(row.destination_lat),
@@ -158,6 +198,10 @@ export function toShipmentInsert(
   const originLookup = lookupPortCoords(data.origin);
   const destLookup = lookupPortCoords(data.destination);
 
+  const senderName = data.senderName ?? data.shipper ?? '';
+  const receiverName = data.receiverName ?? data.consignee ?? '';
+  const receiverEmail = data.receiverEmail ?? data.customerEmail ?? null;
+
   return {
     tracking_number: tracking,
     origin: data.origin,
@@ -173,12 +217,32 @@ export function toShipmentInsert(
     progress: data.progress,
     mode: data.mode,
     priority: data.priority,
-    shipper: data.shipper,
-    consignee: data.consignee,
+    shipper: senderName,
+    consignee: receiverName,
     documents: data.documents ?? [],
     tags: data.tags ?? [],
-    customer_email: data.customerEmail ?? null,
+    customer_email: receiverEmail,
     notes: data.notes ?? null,
+    sender_name: senderName,
+    sender_phone: data.senderPhone ?? '',
+    sender_email: data.senderEmail ?? null,
+    sender_street: data.senderStreet ?? '',
+    sender_city: data.senderCity ?? '',
+    sender_state: data.senderState ?? null,
+    sender_postal: data.senderPostal ?? null,
+    sender_country: data.senderCountry ?? '',
+    receiver_name: receiverName,
+    receiver_phone: data.receiverPhone ?? '',
+    receiver_email: receiverEmail,
+    receiver_street: data.receiverStreet ?? '',
+    receiver_city: data.receiverCity ?? '',
+    receiver_state: data.receiverState ?? null,
+    receiver_postal: data.receiverPostal ?? null,
+    receiver_country: data.receiverCountry ?? '',
+    departure_at: data.departureAt ?? null,
+    delivery_at: data.deliveryAt ?? null,
+    volume: data.volume ?? 0,
+    payment_method: data.paymentMethod ?? '',
     origin_lat: data.originLat ?? originLookup?.[0] ?? null,
     origin_lng: data.originLng ?? originLookup?.[1] ?? null,
     destination_lat: data.destinationLat ?? destLookup?.[0] ?? null,
@@ -212,6 +276,35 @@ export function toShipmentUpdate(updates: Partial<ShipmentWithExtras> & { positi
   if (updates.tags !== undefined) row.tags = updates.tags;
   if (updates.customerEmail !== undefined) row.customer_email = updates.customerEmail;
   if (updates.notes !== undefined) row.notes = updates.notes;
+  if (updates.senderName !== undefined) {
+    row.sender_name = updates.senderName;
+    row.shipper = updates.shipper ?? updates.senderName;
+  }
+  if (updates.senderPhone !== undefined) row.sender_phone = updates.senderPhone;
+  if (updates.senderEmail !== undefined) row.sender_email = updates.senderEmail;
+  if (updates.senderStreet !== undefined) row.sender_street = updates.senderStreet;
+  if (updates.senderCity !== undefined) row.sender_city = updates.senderCity;
+  if (updates.senderState !== undefined) row.sender_state = updates.senderState;
+  if (updates.senderPostal !== undefined) row.sender_postal = updates.senderPostal;
+  if (updates.senderCountry !== undefined) row.sender_country = updates.senderCountry;
+  if (updates.receiverName !== undefined) {
+    row.receiver_name = updates.receiverName;
+    row.consignee = updates.consignee ?? updates.receiverName;
+  }
+  if (updates.receiverPhone !== undefined) row.receiver_phone = updates.receiverPhone;
+  if (updates.receiverEmail !== undefined) {
+    row.receiver_email = updates.receiverEmail;
+    row.customer_email = updates.customerEmail ?? updates.receiverEmail;
+  }
+  if (updates.receiverStreet !== undefined) row.receiver_street = updates.receiverStreet;
+  if (updates.receiverCity !== undefined) row.receiver_city = updates.receiverCity;
+  if (updates.receiverState !== undefined) row.receiver_state = updates.receiverState;
+  if (updates.receiverPostal !== undefined) row.receiver_postal = updates.receiverPostal;
+  if (updates.receiverCountry !== undefined) row.receiver_country = updates.receiverCountry;
+  if (updates.departureAt !== undefined) row.departure_at = updates.departureAt;
+  if (updates.deliveryAt !== undefined) row.delivery_at = updates.deliveryAt;
+  if (updates.volume !== undefined) row.volume = updates.volume;
+  if (updates.paymentMethod !== undefined) row.payment_method = updates.paymentMethod;
   if (updates.originLat !== undefined) row.origin_lat = updates.originLat;
   if (updates.originLng !== undefined) row.origin_lng = updates.originLng;
   if (updates.destinationLat !== undefined) row.destination_lat = updates.destinationLat;

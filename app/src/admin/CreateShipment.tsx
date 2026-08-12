@@ -1,219 +1,415 @@
 import { useState } from 'react';
-import { ArrowRight, ArrowLeft, Check, Plane, Ship, Train, Truck, MapPin, DollarSign, Package } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Check, Plane, Ship, Train, Truck } from 'lucide-react';
 import { useShipments } from '@/context/ShipmentContext';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
-const steps = ['Origin & Destination', 'Details', 'Review'];
+const steps = ['Sender & Receiver', 'Freight & Schedule', 'Review'];
+
+const DEFAULT_CARRIER = 'Quayvox - Global Logistics';
+
+const inputClass =
+  'w-full px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50';
+
+function toLocalInputValue(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromLocalInputValue(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function formatPlace(city: string, country: string) {
+  return [city.trim(), country.trim()].filter(Boolean).join(', ');
+}
 
 const CreateShipment = () => {
   const { addShipment } = useShipments();
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [currentAt] = useState(() => toLocalInputValue(new Date()));
   const [form, setForm] = useState({
-    origin: '',
-    destination: '',
-    carrier: 'Maersk',
+    senderName: '',
+    senderPhone: '',
+    senderEmail: '',
+    senderStreet: '',
+    senderCity: '',
+    senderState: '',
+    senderPostal: '',
+    senderCountry: '',
+    receiverName: '',
+    receiverPhone: '',
+    receiverEmail: '',
+    receiverStreet: '',
+    receiverCity: '',
+    receiverState: '',
+    receiverPostal: '',
+    receiverCountry: '',
+    departureAt: '',
+    deliveryAt: '',
+    weight: '',
+    volume: '',
+    length: '',
+    width: '',
+    height: '',
+    paymentMethod: '',
+    description: '',
     mode: 'Ocean' as 'Air' | 'Ocean' | 'Rail' | 'Road',
     priority: 'Standard' as 'Express' | 'Standard' | 'Economy',
-    weight: '',
-    dimensions: { l: '', w: '', h: '' },
-    shipper: '',
-    consignee: '',
     tags: '',
   });
 
-  const updateField = (field: string, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }));
+  const updateField = (field: keyof typeof form, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const validateStep = (step: number): boolean => {
+    if (step === 0) {
+      const required = [
+        form.senderName,
+        form.senderPhone,
+        form.senderStreet,
+        form.senderCity,
+        form.senderCountry,
+        form.receiverName,
+        form.receiverPhone,
+        form.receiverEmail,
+        form.receiverStreet,
+        form.receiverCity,
+        form.receiverCountry,
+      ];
+      if (required.some((v) => !v.trim())) {
+        toast.error('Fill all required sender and receiver fields');
+        return false;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.receiverEmail.trim())) {
+        toast.error('Enter a valid receiver email');
+        return false;
+      }
+      return true;
+    }
+    if (step === 1) {
+      const required = [
+        form.weight,
+        form.volume,
+        form.height,
+        form.length,
+        form.width,
+        form.paymentMethod,
+      ];
+      if (required.some((v) => !String(v).trim())) {
+        toast.error('Fill all required freight metric fields');
+        return false;
+      }
+      return true;
+    }
+    return true;
+  };
+
+  const handleContinue = () => {
+    if (!validateStep(currentStep)) return;
+    setCurrentStep((s) => s + 1);
   };
 
   const handleSubmit = async () => {
-    const created = await addShipment({
-      origin: form.origin,
-      destination: form.destination,
-      carrier: form.carrier,
-      status: 'Pending',
-      weight: Number(form.weight),
-      dimensions: { l: Number(form.dimensions.l), w: Number(form.dimensions.w), h: Number(form.dimensions.h) },
-      cost: Math.round(Number(form.weight) * 0.3 + Math.random() * 1000),
-      eta: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-      progress: 0,
-      mode: form.mode,
-      priority: form.priority,
-      shipper: form.shipper,
-      consignee: form.consignee,
-      documents: [],
-      tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
-    });
-    if (created) navigate('/admin/shipments');
+    if (!validateStep(0) || !validateStep(1)) {
+      setCurrentStep(0);
+      return;
+    }
+
+    const origin = formatPlace(form.senderCity, form.senderCountry);
+    const destination = formatPlace(form.receiverCity, form.receiverCountry);
+    const departureAt = fromLocalInputValue(form.departureAt);
+    const deliveryAt = fromLocalInputValue(form.deliveryAt);
+    const eta = deliveryAt ? deliveryAt.slice(0, 10) : new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+
+    setSubmitting(true);
+    try {
+      const created = await addShipment({
+        origin,
+        destination,
+        carrier: DEFAULT_CARRIER,
+        status: 'Pending',
+        weight: Number(form.weight),
+        dimensions: {
+          l: Number(form.length),
+          w: Number(form.width),
+          h: Number(form.height),
+        },
+        cost: Math.round(Number(form.weight) * 0.3 + Math.random() * 1000),
+        eta,
+        progress: 0,
+        mode: form.mode,
+        priority: form.priority,
+        shipper: form.senderName.trim(),
+        consignee: form.receiverName.trim(),
+        documents: [],
+        tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        customerEmail: form.receiverEmail.trim(),
+        notes: form.description.trim() || null,
+        senderName: form.senderName.trim(),
+        senderPhone: form.senderPhone.trim(),
+        senderEmail: form.senderEmail.trim() || null,
+        senderStreet: form.senderStreet.trim(),
+        senderCity: form.senderCity.trim(),
+        senderState: form.senderState.trim() || null,
+        senderPostal: form.senderPostal.trim() || null,
+        senderCountry: form.senderCountry.trim(),
+        receiverName: form.receiverName.trim(),
+        receiverPhone: form.receiverPhone.trim(),
+        receiverEmail: form.receiverEmail.trim(),
+        receiverStreet: form.receiverStreet.trim(),
+        receiverCity: form.receiverCity.trim(),
+        receiverState: form.receiverState.trim() || null,
+        receiverPostal: form.receiverPostal.trim() || null,
+        receiverCountry: form.receiverCountry.trim(),
+        departureAt,
+        deliveryAt,
+        volume: Number(form.volume),
+        paymentMethod: form.paymentMethod.trim(),
+      });
+      if (created) navigate('/admin/shipments');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const modeIcons = { Air: Plane, Ocean: Ship, Rail: Train, Road: Truck };
-  const estimatedCost = form.weight ? Math.round(Number(form.weight) * 0.3 + 500) : 0;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="font-display font-bold text-2xl text-text-primary">Create Shipment</h1>
-        <p className="text-sm text-text-secondary mt-1">Set up a new shipment in 3 easy steps</p>
+        <p className="text-sm text-text-secondary mt-1">Capture party, schedule, and freight details</p>
       </div>
 
-      {/* Progress Steps */}
       <div className="flex items-center gap-4">
         {steps.map((step, i) => (
           <div key={step} className="flex items-center gap-2 flex-1">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
-              i < currentStep ? 'bg-emerald-500 text-white' :
-              i === currentStep ? 'bg-cobalt text-white' :
-              'bg-navy-800 text-text-secondary border border-white/10'
-            }`}>
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                i < currentStep
+                  ? 'bg-emerald-500 text-white'
+                  : i === currentStep
+                    ? 'bg-cobalt text-white'
+                    : 'bg-navy-800 text-text-secondary border border-white/10'
+              }`}
+            >
               {i < currentStep ? <Check className="w-4 h-4" /> : i + 1}
             </div>
-            <span className={`text-xs ${i <= currentStep ? 'text-text-primary' : 'text-text-secondary'}`}>{step}</span>
-            {i < steps.length - 1 && <div className={`flex-1 h-0.5 ${i < currentStep ? 'bg-emerald-500' : 'bg-navy-700'}`} />}
+            <span className={`text-xs ${i <= currentStep ? 'text-text-primary' : 'text-text-secondary'}`}>
+              {step}
+            </span>
+            {i < steps.length - 1 && (
+              <div className={`flex-1 h-0.5 ${i < currentStep ? 'bg-emerald-500' : 'bg-navy-700'}`} />
+            )}
           </div>
         ))}
       </div>
 
-      {/* Form Content */}
-      <div className="card-surface p-6">
+      <div className="card-surface p-6 space-y-8">
         {currentStep === 0 && (
-          <div className="space-y-4">
-            <h3 className="font-display font-semibold text-lg text-text-primary">Route Information</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1.5">ORIGIN</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
-                  <input
-                    type="text"
-                    value={form.origin}
-                    onChange={e => updateField('origin', e.target.value)}
-                    placeholder="e.g. Shanghai, CN"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50"
-                  />
+          <>
+            <section className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-text-primary">Sender Details (Origin)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER NAME*</label>
+                  <input className={inputClass} value={form.senderName} onChange={(e) => updateField('senderName', e.target.value)} placeholder="e.g., John Doe" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER PHONE*</label>
+                  <input className={inputClass} value={form.senderPhone} onChange={(e) => updateField('senderPhone', e.target.value)} placeholder="e.g., +1 234 567 8900" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER EMAIL</label>
+                  <input type="email" className={inputClass} value={form.senderEmail} onChange={(e) => updateField('senderEmail', e.target.value)} placeholder="e.g., sender@example.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER STREET ADDRESS*</label>
+                  <input className={inputClass} value={form.senderStreet} onChange={(e) => updateField('senderStreet', e.target.value)} placeholder="e.g., 123 Origin Hub" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER CITY*</label>
+                  <input className={inputClass} value={form.senderCity} onChange={(e) => updateField('senderCity', e.target.value)} placeholder="e.g., Wroclaw" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER STATE / REGION</label>
+                  <input className={inputClass} value={form.senderState} onChange={(e) => updateField('senderState', e.target.value)} placeholder="e.g., Lower Silesian" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER POSTAL CODE</label>
+                  <input className={inputClass} value={form.senderPostal} onChange={(e) => updateField('senderPostal', e.target.value)} placeholder="e.g., 51-644" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">SENDER COUNTRY*</label>
+                  <input className={inputClass} value={form.senderCountry} onChange={(e) => updateField('senderCountry', e.target.value)} placeholder="e.g., Poland" />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1.5">DESTINATION</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
-                  <input
-                    type="text"
-                    value={form.destination}
-                    onChange={e => updateField('destination', e.target.value)}
-                    placeholder="e.g. Los Angeles, US"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50"
-                  />
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-text-primary">Receiver Details (Destination)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER NAME*</label>
+                  <input className={inputClass} value={form.receiverName} onChange={(e) => updateField('receiverName', e.target.value)} placeholder="e.g., Jane Smith" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER PHONE*</label>
+                  <input className={inputClass} value={form.receiverPhone} onChange={(e) => updateField('receiverPhone', e.target.value)} placeholder="e.g., +44 20 7123 4567" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER EMAIL* (AUTO-ACCOUNT & ALERTS)</label>
+                  <input type="email" className={inputClass} value={form.receiverEmail} onChange={(e) => updateField('receiverEmail', e.target.value)} placeholder="customer@example.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER STREET ADDRESS*</label>
+                  <input className={inputClass} value={form.receiverStreet} onChange={(e) => updateField('receiverStreet', e.target.value)} placeholder="e.g., 456 Destination Rd" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER CITY*</label>
+                  <input className={inputClass} value={form.receiverCity} onChange={(e) => updateField('receiverCity', e.target.value)} placeholder="e.g., London" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER STATE / REGION</label>
+                  <input className={inputClass} value={form.receiverState} onChange={(e) => updateField('receiverState', e.target.value)} placeholder="e.g., England" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER POSTAL CODE</label>
+                  <input className={inputClass} value={form.receiverPostal} onChange={(e) => updateField('receiverPostal', e.target.value)} placeholder="e.g., SW1A 1AA" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">RECEIVER COUNTRY*</label>
+                  <input className={inputClass} value={form.receiverCountry} onChange={(e) => updateField('receiverCountry', e.target.value)} placeholder="e.g., UK" />
                 </div>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1.5">TRANSPORT MODE</label>
-              <div className="grid grid-cols-4 gap-3">
-                {(['Ocean', 'Air', 'Rail', 'Road'] as const).map(mode => {
-                  const Icon = modeIcons[mode];
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() => updateField('mode', mode)}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${
-                        form.mode === mode
-                          ? 'bg-cobalt/20 border-cobalt/40 text-cobalt'
-                          : 'bg-navy-900 border-white/5 text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      <Icon className="w-6 h-6" />
-                      <span className="text-xs font-mono">{mode}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1.5">PRIORITY</label>
-              <div className="flex gap-3">
-                {(['Express', 'Standard', 'Economy'] as const).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => updateField('priority', p)}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      form.priority === p
-                        ? 'bg-cobalt text-white'
-                        : 'bg-navy-900 text-text-secondary border border-white/5 hover:text-text-primary'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+            </section>
+          </>
         )}
 
         {currentStep === 1 && (
-          <div className="space-y-4">
-            <h3 className="font-display font-semibold text-lg text-text-primary">Shipment Details</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1.5">WEIGHT (KG)</label>
-                <div className="relative">
-                  <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
-                  <input
-                    type="number"
-                    value={form.weight}
-                    onChange={e => updateField('weight', e.target.value)}
-                    placeholder="e.g. 12500"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50"
-                  />
+          <>
+            <section className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-text-primary">Time and Dates</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">CURRENT TIME & DATE</label>
+                  <input type="datetime-local" className={inputClass} value={currentAt} readOnly />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">DEPARTURE TIME & DATE</label>
+                  <input type="datetime-local" className={inputClass} value={form.departureAt} onChange={(e) => updateField('departureAt', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">DELIVERY TIME & DATE</label>
+                  <input type="datetime-local" className={inputClass} value={form.deliveryAt} onChange={(e) => updateField('deliveryAt', e.target.value)} />
                 </div>
               </div>
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-text-primary">Freight Metrics & Details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">WEIGHT (KG)*</label>
+                  <input type="number" min="0" step="any" className={inputClass} value={form.weight} onChange={(e) => updateField('weight', e.target.value)} placeholder="e.g., 15.5" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">VOLUME*</label>
+                  <input type="number" min="0" step="any" className={inputClass} value={form.volume} onChange={(e) => updateField('volume', e.target.value)} placeholder="e.g., 0.5" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">HEIGHT*</label>
+                  <input type="number" min="0" step="any" className={inputClass} value={form.height} onChange={(e) => updateField('height', e.target.value)} placeholder="e.g., 10" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">LENGTH*</label>
+                  <input type="number" min="0" step="any" className={inputClass} value={form.length} onChange={(e) => updateField('length', e.target.value)} placeholder="e.g., 20" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">WIDTH*</label>
+                  <input type="number" min="0" step="any" className={inputClass} value={form.width} onChange={(e) => updateField('width', e.target.value)} placeholder="e.g., 15" />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">PAYMENT METHOD*</label>
+                  <input className={inputClass} value={form.paymentMethod} onChange={(e) => updateField('paymentMethod', e.target.value)} placeholder="e.g., Bank Transfer, Cash" />
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-text-primary">Description Details</h3>
+              <textarea
+                rows={4}
+                className={`${inputClass} resize-y`}
+                value={form.description}
+                onChange={(e) => updateField('description', e.target.value)}
+                placeholder="Additional details about the shipment"
+              />
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-text-primary">Transport</h3>
               <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1.5">CARRIER</label>
-                <select
-                  value={form.carrier}
-                  onChange={e => updateField('carrier', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary text-sm focus:outline-none focus:border-cobalt/50"
-                >
-                  {['Maersk', 'Hapag-Lloyd', 'DHL Express', 'DB Schenker', 'FedEx', 'Emirates SkyCargo'].map(c => (
-                    <option key={c} value={c}>{c}</option>
+                <label className="block text-xs font-mono text-text-secondary mb-1.5">TRANSPORT MODE</label>
+                <div className="grid grid-cols-4 gap-3">
+                  {(['Ocean', 'Air', 'Rail', 'Road'] as const).map((mode) => {
+                    const Icon = modeIcons[mode];
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => updateField('mode', mode)}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${
+                          form.mode === mode
+                            ? 'bg-cobalt/20 border-cobalt/40 text-cobalt'
+                            : 'bg-navy-900 border-white/5 text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        <Icon className="w-6 h-6" />
+                        <span className="text-xs font-mono">{mode}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-text-secondary mb-1.5">PRIORITY</label>
+                <div className="flex gap-3">
+                  {(['Express', 'Standard', 'Economy'] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => updateField('priority', p)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                        form.priority === p
+                          ? 'bg-cobalt text-white'
+                          : 'bg-navy-900 text-text-secondary border border-white/5 hover:text-text-primary'
+                      }`}
+                    >
+                      {p}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1.5">DIMENSIONS (L × W × H meters)</label>
-              <div className="grid grid-cols-3 gap-3">
-                <input type="number" placeholder="Length" value={form.dimensions.l} onChange={e => setForm(p => ({ ...p, dimensions: { ...p.dimensions, l: e.target.value } }))}
-                  className="px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50" />
-                <input type="number" placeholder="Width" value={form.dimensions.w} onChange={e => setForm(p => ({ ...p, dimensions: { ...p.dimensions, w: e.target.value } }))}
-                  className="px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50" />
-                <input type="number" placeholder="Height" value={form.dimensions.h} onChange={e => setForm(p => ({ ...p, dimensions: { ...p.dimensions, h: e.target.value } }))}
-                  className="px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1.5">SHIPPER</label>
-                <input type="text" value={form.shipper} onChange={e => updateField('shipper', e.target.value)} placeholder="Company name"
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50" />
+                <label className="block text-xs font-mono text-text-secondary mb-1.5">TAGS (comma separated)</label>
+                <input
+                  className={inputClass}
+                  value={form.tags}
+                  onChange={(e) => updateField('tags', e.target.value)}
+                  placeholder="electronics, priority, fragile"
+                />
               </div>
-              <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1.5">CONSIGNEE</label>
-                <input type="text" value={form.consignee} onChange={e => updateField('consignee', e.target.value)} placeholder="Company name"
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1.5">TAGS (comma separated)</label>
-              <input type="text" value={form.tags} onChange={e => updateField('tags', e.target.value)} placeholder="electronics, priority, fragile"
-                className="w-full px-4 py-2.5 rounded-xl bg-navy-900 border border-white/5 text-text-primary placeholder:text-text-secondary/50 text-sm focus:outline-none focus:border-cobalt/50" />
-            </div>
-          </div>
+            </section>
+          </>
         )}
 
         {currentStep === 2 && (
@@ -221,50 +417,55 @@ const CreateShipment = () => {
             <h3 className="font-display font-semibold text-lg text-text-primary">Review & Confirm</h3>
             <div className="space-y-3">
               {[
-                { label: 'Route', value: `${form.origin} → ${form.destination}` },
-                { label: 'Mode', value: form.mode },
-                { label: 'Priority', value: form.priority },
-                { label: 'Weight', value: `${form.weight} kg` },
-                { label: 'Carrier', value: form.carrier },
-                { label: 'Shipper', value: form.shipper },
-                { label: 'Consignee', value: form.consignee },
-              ].map(item => (
-                <div key={item.label} className="flex items-center justify-between p-3 rounded-xl bg-navy-900/60 border border-white/5">
-                  <span className="text-xs font-mono text-text-secondary">{item.label}</span>
-                  <span className="text-sm text-text-primary">{item.value || '—'}</span>
+                { label: 'Route', value: `${formatPlace(form.senderCity, form.senderCountry)} → ${formatPlace(form.receiverCity, form.receiverCountry)}` },
+                { label: 'Sender', value: `${form.senderName} · ${form.senderPhone}` },
+                { label: 'Sender address', value: [form.senderStreet, form.senderCity, form.senderState, form.senderPostal, form.senderCountry].filter(Boolean).join(', ') },
+                { label: 'Receiver', value: `${form.receiverName} · ${form.receiverPhone}` },
+                { label: 'Receiver email', value: form.receiverEmail },
+                { label: 'Receiver address', value: [form.receiverStreet, form.receiverCity, form.receiverState, form.receiverPostal, form.receiverCountry].filter(Boolean).join(', ') },
+                { label: 'Departure', value: form.departureAt || '—' },
+                { label: 'Delivery', value: form.deliveryAt || '—' },
+                { label: 'Weight / Volume', value: `${form.weight} kg / ${form.volume}` },
+                { label: 'Dimensions (L×W×H)', value: `${form.length} × ${form.width} × ${form.height}` },
+                { label: 'Payment', value: form.paymentMethod },
+                { label: 'Mode / Priority', value: `${form.mode} · ${form.priority}` },
+                { label: 'Carrier', value: DEFAULT_CARRIER },
+                { label: 'Description', value: form.description || '—' },
+              ].map((item) => (
+                <div key={item.label} className="flex items-start justify-between gap-4 p-3 rounded-xl bg-navy-900/60 border border-white/5">
+                  <span className="text-xs font-mono text-text-secondary shrink-0">{item.label}</span>
+                  <span className="text-sm text-text-primary text-right">{item.value || '—'}</span>
                 </div>
               ))}
-              <div className="flex items-center justify-between p-4 rounded-xl bg-cobalt/10 border border-cobalt/30">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-cobalt" />
-                  <span className="text-sm font-medium text-text-primary">Estimated Cost</span>
-                </div>
-                <span className="text-xl font-display font-bold text-cobalt">${estimatedCost.toLocaleString()}</span>
-              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Navigation Buttons */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => setCurrentStep(s => Math.max(0, s - 1))}
-          disabled={currentStep === 0}
+          type="button"
+          onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
+          disabled={currentStep === 0 || submitting}
           className="btn-secondary flex items-center gap-2 disabled:opacity-30"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
         </button>
         {currentStep < 2 ? (
-          <button onClick={() => setCurrentStep(s => s + 1)} className="btn-primary flex items-center gap-2">
+          <button type="button" onClick={handleContinue} className="btn-primary flex items-center gap-2">
             Continue
             <ArrowRight className="w-4 h-4" />
           </button>
         ) : (
-          <button onClick={() => void handleSubmit()} className="btn-primary flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={submitting}
+            className="btn-primary flex items-center gap-2 disabled:opacity-60"
+          >
             <Check className="w-4 h-4" />
-            Create Shipment
+            {submitting ? 'Creating…' : 'Create Shipment'}
           </button>
         )}
       </div>

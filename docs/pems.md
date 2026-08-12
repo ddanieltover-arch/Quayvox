@@ -18,8 +18,8 @@
 | Design system | Custom navy/cobalt tokens + shadcn/ui |
 | Primary risks | Missing env/secrets block deploy; cookie auth misconfig |
 | Open decisions | None — Neon + env admin auth locked |
-| Recent changes | Admin-driven live map (MapLibre) + shipment geo / positions |
-| Next priorities | Apply `003_shipment_geo.sql` on Neon; Domain DNS + Resend verify; Deploy QA |
+| Recent changes | New shipment party/freight fields + Neon `004_shipment_party_details.sql` |
+| Next priorities | Domain DNS + Resend verify; Deploy QA |
 
 ---
 

@@ -32,10 +32,6 @@ import Analytics from '@/admin/Analytics';
 import CreateShipment from '@/admin/CreateShipment';
 import Globe3D from '@/admin/Globe3D';
 import Calculator from '@/admin/Calculator';
-import Documents from '@/admin/Documents';
-import Team from '@/admin/Team';
-import Portal from '@/admin/Portal';
-import Predictions from '@/admin/Predictions';
 import Chat from '@/admin/Chat';
 import Mobile from '@/admin/Mobile';
 
@@ -147,10 +143,6 @@ function App() {
                 <Route path="create" element={<CreateShipment />} />
                 <Route path="globe" element={<Globe3D />} />
                 <Route path="calculator" element={<Calculator />} />
-                <Route path="documents" element={<Documents />} />
-                <Route path="team" element={<Team />} />
-                <Route path="portal" element={<Portal />} />
-                <Route path="predictions" element={<Predictions />} />
                 <Route path="chat" element={<Chat />} />
                 <Route path="mobile" element={<Mobile />} />
               </Route>

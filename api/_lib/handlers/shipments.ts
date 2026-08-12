@@ -14,6 +14,33 @@ import {
 } from '../shipments';
 
 const nullableNumber = z.number().finite().nullable().optional();
+const optionalEmail = z
+  .union([z.string().email(), z.literal(''), z.null()])
+  .optional()
+  .transform((v) => (v === '' || v === undefined ? null : v));
+
+const partyFields = {
+  sender_name: z.string().optional(),
+  sender_phone: z.string().optional(),
+  sender_email: optionalEmail,
+  sender_street: z.string().optional(),
+  sender_city: z.string().optional(),
+  sender_state: z.string().nullable().optional(),
+  sender_postal: z.string().nullable().optional(),
+  sender_country: z.string().optional(),
+  receiver_name: z.string().optional(),
+  receiver_phone: z.string().optional(),
+  receiver_email: optionalEmail,
+  receiver_street: z.string().optional(),
+  receiver_city: z.string().optional(),
+  receiver_state: z.string().nullable().optional(),
+  receiver_postal: z.string().nullable().optional(),
+  receiver_country: z.string().optional(),
+  departure_at: z.string().nullable().optional(),
+  delivery_at: z.string().nullable().optional(),
+  volume: z.number().optional(),
+  payment_method: z.string().optional(),
+};
 
 const createSchema = z.object({
   tracking_number: z.string().trim().min(3).max(64),
@@ -34,8 +61,9 @@ const createSchema = z.object({
   consignee: z.string(),
   documents: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
-  customer_email: z.string().email().nullable().optional(),
+  customer_email: optionalEmail,
   notes: z.string().nullable().optional(),
+  ...partyFields,
   origin_lat: nullableNumber,
   origin_lng: nullableNumber,
   destination_lat: nullableNumber,
@@ -64,8 +92,9 @@ const patchSchema = z
     consignee: z.string().optional(),
     documents: z.array(z.string()).optional(),
     tags: z.array(z.string()).optional(),
-    customer_email: z.string().email().nullable().optional(),
+    customer_email: optionalEmail,
     notes: z.string().nullable().optional(),
+    ...partyFields,
     origin_lat: nullableNumber,
     origin_lng: nullableNumber,
     destination_lat: nullableNumber,

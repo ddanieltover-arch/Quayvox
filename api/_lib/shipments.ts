@@ -22,6 +22,26 @@ const UPDATE_COLUMNS = new Set([
   'tags',
   'customer_email',
   'notes',
+  'sender_name',
+  'sender_phone',
+  'sender_email',
+  'sender_street',
+  'sender_city',
+  'sender_state',
+  'sender_postal',
+  'sender_country',
+  'receiver_name',
+  'receiver_phone',
+  'receiver_email',
+  'receiver_street',
+  'receiver_city',
+  'receiver_state',
+  'receiver_postal',
+  'receiver_country',
+  'departure_at',
+  'delivery_at',
+  'volume',
+  'payment_method',
   'origin_lat',
   'origin_lng',
   'destination_lat',
@@ -35,6 +55,23 @@ function asNullableNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function asNullableString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s.length ? s : null;
+}
+
+function asString(value: unknown, fallback = ''): string {
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
+function asNullableDate(value: unknown): Date | null {
+  if (value === null || value === undefined || value === '') return null;
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /** Fill missing OD coords from the known port lookup when place names match. */
@@ -141,11 +178,19 @@ export async function insertShipmentPosition(input: {
 export async function insertShipment(payload: Record<string, unknown>) {
   const sql = getSql();
   const resolved = resolveGeoDefaults(payload);
+  const senderName = asString(resolved.sender_name ?? resolved.shipper);
+  const receiverName = asString(resolved.receiver_name ?? resolved.consignee);
+  const receiverEmail = asNullableString(resolved.receiver_email ?? resolved.customer_email);
   const rows = await sql`
     insert into public.shipments (
       tracking_number, origin, destination, carrier, status, weight,
       dim_l, dim_w, dim_h, cost, eta, progress, mode, priority,
       shipper, consignee, documents, tags, customer_email, notes,
+      sender_name, sender_phone, sender_email, sender_street, sender_city,
+      sender_state, sender_postal, sender_country,
+      receiver_name, receiver_phone, receiver_email, receiver_street, receiver_city,
+      receiver_state, receiver_postal, receiver_country,
+      departure_at, delivery_at, volume, payment_method,
       origin_lat, origin_lng, destination_lat, destination_lng,
       current_lat, current_lng, current_location_updated_at
     ) values (
@@ -163,12 +208,32 @@ export async function insertShipment(payload: Record<string, unknown>) {
       ${resolved.progress as number},
       ${resolved.mode as string},
       ${resolved.priority as string},
-      ${resolved.shipper as string},
-      ${resolved.consignee as string},
+      ${senderName},
+      ${receiverName},
       ${resolved.documents as string[]},
       ${resolved.tags as string[]},
-      ${resolved.customer_email as string | null},
-      ${resolved.notes as string | null},
+      ${receiverEmail},
+      ${asNullableString(resolved.notes)},
+      ${senderName},
+      ${asString(resolved.sender_phone)},
+      ${asNullableString(resolved.sender_email)},
+      ${asString(resolved.sender_street)},
+      ${asString(resolved.sender_city)},
+      ${asNullableString(resolved.sender_state)},
+      ${asNullableString(resolved.sender_postal)},
+      ${asString(resolved.sender_country)},
+      ${receiverName},
+      ${asString(resolved.receiver_phone)},
+      ${receiverEmail},
+      ${asString(resolved.receiver_street)},
+      ${asString(resolved.receiver_city)},
+      ${asNullableString(resolved.receiver_state)},
+      ${asNullableString(resolved.receiver_postal)},
+      ${asString(resolved.receiver_country)},
+      ${asNullableDate(resolved.departure_at)},
+      ${asNullableDate(resolved.delivery_at)},
+      ${Number(resolved.volume ?? 0)},
+      ${asString(resolved.payment_method)},
       ${asNullableNumber(resolved.origin_lat)},
       ${asNullableNumber(resolved.origin_lng)},
       ${asNullableNumber(resolved.destination_lat)},
@@ -204,6 +269,10 @@ export async function updateShipment(id: string, patch: Record<string, unknown>)
     withGeo.current_location_updated_at = new Date().toISOString();
   }
 
+  const senderName = asString(withGeo.sender_name ?? withGeo.shipper);
+  const receiverName = asString(withGeo.receiver_name ?? withGeo.consignee);
+  const receiverEmail = asNullableString(withGeo.receiver_email ?? withGeo.customer_email);
+
   const sql = getSql();
   const rows = await sql`
     update public.shipments set
@@ -221,12 +290,32 @@ export async function updateShipment(id: string, patch: Record<string, unknown>)
       progress = ${withGeo.progress as number},
       mode = ${withGeo.mode as string},
       priority = ${withGeo.priority as string},
-      shipper = ${withGeo.shipper as string},
-      consignee = ${withGeo.consignee as string},
+      shipper = ${senderName},
+      consignee = ${receiverName},
       documents = ${withGeo.documents as string[]},
       tags = ${withGeo.tags as string[]},
-      customer_email = ${withGeo.customer_email as string | null},
-      notes = ${withGeo.notes as string | null},
+      customer_email = ${receiverEmail},
+      notes = ${asNullableString(withGeo.notes)},
+      sender_name = ${senderName},
+      sender_phone = ${asString(withGeo.sender_phone)},
+      sender_email = ${asNullableString(withGeo.sender_email)},
+      sender_street = ${asString(withGeo.sender_street)},
+      sender_city = ${asString(withGeo.sender_city)},
+      sender_state = ${asNullableString(withGeo.sender_state)},
+      sender_postal = ${asNullableString(withGeo.sender_postal)},
+      sender_country = ${asString(withGeo.sender_country)},
+      receiver_name = ${receiverName},
+      receiver_phone = ${asString(withGeo.receiver_phone)},
+      receiver_email = ${receiverEmail},
+      receiver_street = ${asString(withGeo.receiver_street)},
+      receiver_city = ${asString(withGeo.receiver_city)},
+      receiver_state = ${asNullableString(withGeo.receiver_state)},
+      receiver_postal = ${asNullableString(withGeo.receiver_postal)},
+      receiver_country = ${asString(withGeo.receiver_country)},
+      departure_at = ${asNullableDate(withGeo.departure_at)},
+      delivery_at = ${asNullableDate(withGeo.delivery_at)},
+      volume = ${Number(withGeo.volume ?? 0)},
+      payment_method = ${asString(withGeo.payment_method)},
       origin_lat = ${asNullableNumber(withGeo.origin_lat)},
       origin_lng = ${asNullableNumber(withGeo.origin_lng)},
       destination_lat = ${asNullableNumber(withGeo.destination_lat)},
