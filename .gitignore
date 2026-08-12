@@ -2,10 +2,6 @@
 node_modules/
 app/node_modules/
 
-# Build output (generated during Vercel build)
-api/handler.js
-api/handler.js.map
-
 app/dist/
 .vercel/
 

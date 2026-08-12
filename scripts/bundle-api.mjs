@@ -9,8 +9,11 @@ await esbuild.build({
   platform: 'node',
   target: 'node20',
   format: 'cjs',
-  sourcemap: true,
+  sourcemap: false,
   loader: { '.tsx': 'tsx', '.ts': 'ts' },
+  // Keep npm deps external — Vercel provides node_modules at runtime.
+  // Only our api/_lib + emails code is inlined (fixes missing relative imports).
+  packages: 'external',
   logLevel: 'info',
 });
 
