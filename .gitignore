@@ -36,3 +36,5 @@ app/*.tsbuildinfo
 # Test / coverage
 coverage/
 .nyc_output/
+
+api/handler.js.map
