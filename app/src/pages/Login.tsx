@@ -62,11 +62,7 @@ const Login = () => {
       <main className="flex-1 flex items-center justify-center px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
         <div className="w-full max-w-md card-surface p-6 sm:p-8">
           <h1 className="font-display font-bold text-2xl text-text-primary mb-2">Admin sign in</h1>
-          <p className="text-sm text-text-secondary mb-6">
-            Access is invite-only. Sign in with the admin credentials configured in the server{' '}
-            <code className="text-cobalt">.env</code> (
-            <code className="text-cobalt">ADMIN_EMAIL</code>).
-          </p>
+          <p className="text-sm text-text-secondary mb-6">Access is invite-only.</p>
 
           {!configured && (
             <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
