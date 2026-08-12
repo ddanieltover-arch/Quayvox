@@ -1,106 +1,36 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MapPin, Package, Clock, Search } from 'lucide-react';
-import {
-  mapEventRow,
-  mapShipmentRow,
-  type ShipmentEvent,
-  type ShipmentEventRow,
-  type ShipmentRow,
-  type ShipmentWithExtras,
-} from '@/lib/shipments';
 import { getStatusColor } from '@/data/mockShipments';
+import { ShipmentMap } from '@/components/tracking/ShipmentMap';
+import { useTrackPolling } from '@/hooks/useTrackPolling';
 
 const TrackResult = () => {
   const { trackingNumber = '' } = useParams();
   const navigate = useNavigate();
   const [query, setQuery] = useState(trackingNumber);
-  const [shipment, setShipment] = useState<ShipmentWithExtras | null>(null);
-  const [events, setEvents] = useState<ShipmentEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setQuery(trackingNumber);
   }, [trackingNumber]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const code = trackingNumber.trim();
-      if (!code) {
-        setLoading(false);
-        setNotFound(false);
-        setShipment(null);
-        setEvents([]);
-        setError(null);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-      setNotFound(false);
-
-      try {
-        const res = await fetch(`/api/track/${encodeURIComponent(code)}`);
-        const data = (await res.json()) as {
-          shipment?: ShipmentRow | null;
-          events?: ShipmentEventRow[];
-          error?: string;
-        };
-
-        if (cancelled) return;
-
-        if (res.status === 503) {
-          setError('Tracking is unavailable until the database API is running.');
-          setShipment(null);
-          setEvents([]);
-          setLoading(false);
-          return;
-        }
-
-        if (res.status === 404 || !data.shipment) {
-          setShipment(null);
-          setEvents([]);
-          setNotFound(true);
-          setLoading(false);
-          return;
-        }
-
-        if (!res.ok) {
-          setError(data.error || 'Failed to load tracking data');
-          setShipment(null);
-          setEvents([]);
-          setLoading(false);
-          return;
-        }
-
-        setShipment(mapShipmentRow(data.shipment));
-        setEvents((data.events ?? []).map(mapEventRow));
-        setLoading(false);
-      } catch {
-        if (!cancelled) {
-          setError('Cannot reach tracking API. Run `vercel dev` from the repo root.');
-          setShipment(null);
-          setEvents([]);
-          setLoading(false);
-        }
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [trackingNumber]);
+  const { shipment, events, positions, loading, notFound, error, lastFetchedAt } = useTrackPolling(
+    trackingNumber,
+    { enabled: Boolean(trackingNumber.trim()) }
+  );
 
   const onSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const next = query.trim();
     if (next) navigate(`/track/${encodeURIComponent(next)}`);
   };
+
+  const hasMapGeo =
+    shipment &&
+    (shipment.originLat != null ||
+      shipment.destinationLat != null ||
+      shipment.currentLat != null ||
+      positions.length > 0);
 
   return (
     <div className="pt-20 lg:pt-24 px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-3xl mx-auto pb-[max(2rem,env(safe-area-inset-bottom))]">
@@ -116,7 +46,12 @@ const TrackResult = () => {
         Track shipment
       </h1>
       <p className="text-sm text-text-secondary mb-6">
-        Enter a tracking number to view live status and timeline.
+        Enter a tracking number to view live status, map, and timeline.
+        {lastFetchedAt ? (
+          <span className="block mt-1 text-xs">
+            Live · updated {new Date(lastFetchedAt).toLocaleTimeString()}
+          </span>
+        ) : null}
       </p>
 
       <form onSubmit={onSearch} className="glass-card p-2 flex flex-col sm:flex-row gap-2 mb-8">
@@ -215,6 +150,41 @@ const TrackResult = () => {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="card-surface p-0 overflow-hidden">
+            <div className="px-5 sm:px-6 pt-5 pb-3 flex items-center justify-between gap-2">
+              <h2 className="font-display font-semibold text-lg text-text-primary">Live map</h2>
+              {shipment.currentLocationUpdatedAt && (
+                <p className="text-xs text-text-secondary">
+                  Position {new Date(shipment.currentLocationUpdatedAt).toLocaleString()}
+                </p>
+              )}
+            </div>
+            {hasMapGeo ? (
+              <ShipmentMap
+                shipments={[
+                  {
+                    id: shipment.id,
+                    trackingNumber: shipment.trackingNumber,
+                    status: shipment.status,
+                    progress: shipment.progress,
+                    originLat: shipment.originLat,
+                    originLng: shipment.originLng,
+                    destinationLat: shipment.destinationLat,
+                    destinationLng: shipment.destinationLng,
+                    currentLat: shipment.currentLat,
+                    currentLng: shipment.currentLng,
+                    positions,
+                  },
+                ]}
+                className="h-64 sm:h-80 mx-5 sm:mx-6 mb-5 sm:mb-6"
+              />
+            ) : (
+              <p className="px-5 sm:px-6 pb-5 text-sm text-text-secondary">
+                Location updates when the shipment is scanned.
+              </p>
+            )}
           </div>
 
           <div className="card-surface p-5 sm:p-6">

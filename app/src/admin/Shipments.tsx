@@ -44,6 +44,13 @@ const Shipments = () => {
     customerEmail: '',
     notes: '',
     notifyCustomer: true,
+    currentLat: '',
+    currentLng: '',
+    positionLabel: '',
+    originLat: '',
+    originLng: '',
+    destinationLat: '',
+    destinationLng: '',
   });
   const [saving, setSaving] = useState(false);
   const itemsPerPage = 10;
@@ -137,26 +144,89 @@ const Shipments = () => {
       customerEmail: shipment.customerEmail || '',
       notes: shipment.notes || '',
       notifyCustomer: Boolean(shipment.customerEmail),
+      currentLat: shipment.currentLat != null ? String(shipment.currentLat) : '',
+      currentLng: shipment.currentLng != null ? String(shipment.currentLng) : '',
+      positionLabel: '',
+      originLat: shipment.originLat != null ? String(shipment.originLat) : '',
+      originLng: shipment.originLng != null ? String(shipment.originLng) : '',
+      destinationLat: shipment.destinationLat != null ? String(shipment.destinationLat) : '',
+      destinationLng: shipment.destinationLng != null ? String(shipment.destinationLng) : '',
     });
+  };
+
+  const parseOptionalCoord = (value: string): number | null | undefined => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : undefined;
   };
 
   const saveEdit = async () => {
     if (!editing) return;
+
+    const currentLat = parseOptionalCoord(editForm.currentLat);
+    const currentLng = parseOptionalCoord(editForm.currentLng);
+    if (
+      (editForm.currentLat.trim() || editForm.currentLng.trim()) &&
+      (currentLat === undefined || currentLng === undefined)
+    ) {
+      return;
+    }
+    if ((currentLat == null) !== (currentLng == null)) {
+      return;
+    }
+
+    const originLat = parseOptionalCoord(editForm.originLat);
+    const originLng = parseOptionalCoord(editForm.originLng);
+    const destinationLat = parseOptionalCoord(editForm.destinationLat);
+    const destinationLng = parseOptionalCoord(editForm.destinationLng);
+
     setSaving(true);
-    await updateShipment(
-      editing.id,
-      {
-        status: editForm.status,
-        progress: editForm.progress,
-        eta: editForm.eta,
-        customerEmail: editForm.customerEmail || null,
-        notes: editForm.notes || null,
-      },
-      {
-        notifyCustomer: editForm.notifyCustomer,
-        eventMessage: `Status updated to ${editForm.status}`,
-      }
-    );
+
+    const updates: Parameters<typeof updateShipment>[1] = {
+      status: editForm.status,
+      progress: editForm.progress,
+      eta: editForm.eta,
+      customerEmail: editForm.customerEmail || null,
+      notes: editForm.notes || null,
+    };
+
+    const nextOriginLat = originLat === undefined ? editing.originLat ?? null : originLat;
+    const nextOriginLng = originLng === undefined ? editing.originLng ?? null : originLng;
+    const nextDestLat =
+      destinationLat === undefined ? editing.destinationLat ?? null : destinationLat;
+    const nextDestLng =
+      destinationLng === undefined ? editing.destinationLng ?? null : destinationLng;
+
+    if (nextOriginLat !== (editing.originLat ?? null) || nextOriginLng !== (editing.originLng ?? null)) {
+      updates.originLat = nextOriginLat;
+      updates.originLng = nextOriginLng;
+    }
+    if (
+      nextDestLat !== (editing.destinationLat ?? null) ||
+      nextDestLng !== (editing.destinationLng ?? null)
+    ) {
+      updates.destinationLat = nextDestLat;
+      updates.destinationLng = nextDestLng;
+    }
+
+    const nextCurrentLat = currentLat === undefined ? editing.currentLat ?? null : currentLat;
+    const nextCurrentLng = currentLng === undefined ? editing.currentLng ?? null : currentLng;
+    const positionChanged =
+      nextCurrentLat !== (editing.currentLat ?? null) ||
+      nextCurrentLng !== (editing.currentLng ?? null);
+
+    if (positionChanged) {
+      updates.currentLat = nextCurrentLat;
+      updates.currentLng = nextCurrentLng;
+      updates.positionLabel = editForm.positionLabel.trim() || null;
+    }
+
+    await updateShipment(editing.id, updates, {
+      notifyCustomer: editForm.notifyCustomer,
+      eventMessage: `Status updated to ${editForm.status}`,
+      eventLocation: editForm.positionLabel.trim() || undefined,
+    });
     setSaving(false);
     setEditing(null);
   };
@@ -558,6 +628,107 @@ const Shipments = () => {
                   onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
                   rows={3}
                   className="w-full px-3 py-2 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
+                    Origin lat
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editForm.originLat}
+                    onChange={(e) => setEditForm((f) => ({ ...f, originLat: e.target.value }))}
+                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                    placeholder="31.2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
+                    Origin lng
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editForm.originLng}
+                    onChange={(e) => setEditForm((f) => ({ ...f, originLng: e.target.value }))}
+                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                    placeholder="121.5"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
+                    Dest lat
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editForm.destinationLat}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, destinationLat: e.target.value }))
+                    }
+                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                    placeholder="34.1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
+                    Dest lng
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editForm.destinationLng}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, destinationLng: e.target.value }))
+                    }
+                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                    placeholder="-118.2"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
+                    Current lat
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editForm.currentLat}
+                    onChange={(e) => setEditForm((f) => ({ ...f, currentLat: e.target.value }))}
+                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                    placeholder="Live latitude"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
+                    Current lng
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editForm.currentLng}
+                    onChange={(e) => setEditForm((f) => ({ ...f, currentLng: e.target.value }))}
+                    className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                    placeholder="Live longitude"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
+                  Position label
+                </label>
+                <input
+                  type="text"
+                  value={editForm.positionLabel}
+                  onChange={(e) => setEditForm((f) => ({ ...f, positionLabel: e.target.value }))}
+                  className="w-full min-h-11 px-3 rounded-xl bg-navy-800 border border-white/10 text-text-primary text-sm"
+                  placeholder="e.g. Mid-Pacific · scan hub"
                 />
               </div>
 

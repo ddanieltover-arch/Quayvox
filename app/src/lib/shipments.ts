@@ -1,4 +1,5 @@
 import type { Shipment } from '@/data/mockShipments';
+import { lookupPortCoords } from '@/lib/geoPorts';
 
 export type ShipmentStatus = Shipment['status'];
 export type ShipmentMode = Shipment['mode'];
@@ -11,6 +12,15 @@ export interface ShipmentEvent {
   location: string | null;
   message: string;
   occurredAt: string;
+}
+
+export interface ShipmentPosition {
+  id: string;
+  shipmentId: string;
+  lat: number;
+  lng: number;
+  label: string | null;
+  recordedAt: string;
 }
 
 export interface ShipmentRow {
@@ -35,6 +45,13 @@ export interface ShipmentRow {
   tags: string[] | null;
   customer_email: string | null;
   notes: string | null;
+  origin_lat?: number | null;
+  origin_lng?: number | null;
+  destination_lat?: number | null;
+  destination_lng?: number | null;
+  current_lat?: number | null;
+  current_lng?: number | null;
+  current_location_updated_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,10 +66,26 @@ export interface ShipmentEventRow {
   created_at: string;
 }
 
+export interface ShipmentPositionRow {
+  id: string;
+  shipment_id: string;
+  lat: number;
+  lng: number;
+  label: string | null;
+  recorded_at: string;
+  created_at: string;
+}
+
 export type ShipmentWithExtras = Shipment & {
   customerEmail?: string | null;
   notes?: string | null;
 };
+
+function asNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
   return {
@@ -81,6 +114,13 @@ export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
     tags: row.tags ?? [],
     customerEmail: row.customer_email,
     notes: row.notes,
+    originLat: asNullableNumber(row.origin_lat),
+    originLng: asNullableNumber(row.origin_lng),
+    destinationLat: asNullableNumber(row.destination_lat),
+    destinationLng: asNullableNumber(row.destination_lng),
+    currentLat: asNullableNumber(row.current_lat),
+    currentLng: asNullableNumber(row.current_lng),
+    currentLocationUpdatedAt: row.current_location_updated_at ?? null,
   };
 }
 
@@ -95,6 +135,17 @@ export function mapEventRow(row: ShipmentEventRow): ShipmentEvent {
   };
 }
 
+export function mapPositionRow(row: ShipmentPositionRow): ShipmentPosition {
+  return {
+    id: row.id,
+    shipmentId: row.shipment_id,
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    label: row.label,
+    recordedAt: row.recorded_at,
+  };
+}
+
 export function toShipmentInsert(
   data: Omit<ShipmentWithExtras, 'id' | 'trackingNumber' | 'createdAt' | 'updatedAt'> & {
     trackingNumber?: string;
@@ -103,6 +154,9 @@ export function toShipmentInsert(
   const tracking =
     data.trackingNumber ||
     `SH-${new Date().getFullYear()}-${Math.floor(7000 + Math.random() * 2999)}`;
+
+  const originLookup = lookupPortCoords(data.origin);
+  const destLookup = lookupPortCoords(data.destination);
 
   return {
     tracking_number: tracking,
@@ -125,10 +179,16 @@ export function toShipmentInsert(
     tags: data.tags ?? [],
     customer_email: data.customerEmail ?? null,
     notes: data.notes ?? null,
+    origin_lat: data.originLat ?? originLookup?.[0] ?? null,
+    origin_lng: data.originLng ?? originLookup?.[1] ?? null,
+    destination_lat: data.destinationLat ?? destLookup?.[0] ?? null,
+    destination_lng: data.destinationLng ?? destLookup?.[1] ?? null,
+    current_lat: data.currentLat ?? null,
+    current_lng: data.currentLng ?? null,
   };
 }
 
-export function toShipmentUpdate(updates: Partial<ShipmentWithExtras>) {
+export function toShipmentUpdate(updates: Partial<ShipmentWithExtras> & { positionLabel?: string | null }) {
   const row: Record<string, unknown> = {};
   if (updates.trackingNumber !== undefined) row.tracking_number = updates.trackingNumber;
   if (updates.origin !== undefined) row.origin = updates.origin;
@@ -152,5 +212,12 @@ export function toShipmentUpdate(updates: Partial<ShipmentWithExtras>) {
   if (updates.tags !== undefined) row.tags = updates.tags;
   if (updates.customerEmail !== undefined) row.customer_email = updates.customerEmail;
   if (updates.notes !== undefined) row.notes = updates.notes;
+  if (updates.originLat !== undefined) row.origin_lat = updates.originLat;
+  if (updates.originLng !== undefined) row.origin_lng = updates.originLng;
+  if (updates.destinationLat !== undefined) row.destination_lat = updates.destinationLat;
+  if (updates.destinationLng !== undefined) row.destination_lng = updates.destinationLng;
+  if (updates.currentLat !== undefined) row.current_lat = updates.currentLat;
+  if (updates.currentLng !== undefined) row.current_lng = updates.currentLng;
+  if (updates.positionLabel !== undefined) row.position_label = updates.positionLabel;
   return row;
 }

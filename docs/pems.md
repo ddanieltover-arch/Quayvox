@@ -14,12 +14,12 @@
 | Current version | 0.1.0 (production completion) |
 | Current sprint / phase | Build / Launch |
 | Architecture (one line) | Vite SPA + Neon Postgres + Vercel serverless auth/API (Resend) |
-| Tech stack (one line) | React 19, Vite 7, Tailwind 3, Neon, Resend, Vercel |
+| Tech stack (one line) | React 19, Vite 7, Tailwind 3, Neon, MapLibre, Resend, Vercel |
 | Design system | Custom navy/cobalt tokens + shadcn/ui |
 | Primary risks | Missing env/secrets block deploy; cookie auth misconfig |
 | Open decisions | None — Neon + env admin auth locked |
-| Recent changes | Migrated admin/data from Supabase to Neon + cookie sessions |
-| Next priorities | Domain DNS + Resend verify, Deploy QA, set ADMIN_PASSWORD_HASH |
+| Recent changes | Admin-driven live map (MapLibre) + shipment geo / positions |
+| Next priorities | Apply `003_shipment_geo.sql` on Neon; Domain DNS + Resend verify; Deploy QA |
 
 ---
 
@@ -57,6 +57,7 @@
 | Animation | GSAP + Framer Motion | Pin/snap disabled on mobile |
 | Hosting | Vercel | SPA rewrites + API |
 | Email | Resend | Server-only API key; from `Quayvox <noreply@quayvox.com>` |
+| Maps | MapLibre GL JS + OpenFreeMap | Admin-driven lat/lng; ~8s client poll; optional `VITE_MAP_STYLE_URL` |
 
 **Documented exceptions to PSEF:** Vite SPA instead of Next.js — preserve existing UI; APIs via Vercel functions.
 
@@ -109,6 +110,7 @@ Follow Pulse Engineering Framework naming and commit conventions. Branch: featur
 | 2026-08-10 | Rebrand to Quayvox | ShipTrack Pro collided with existing products; quayvox.com + info@quayvox.com locked |
 | 2026-08-10 | Solution detail pages | Six mode/industry pages under `/solutions/:slug` with shared catalog in `data/solutions.ts` |
 | 2026-08-11 | Neon + cookie admin auth | Replace Supabase; use existing Neon DATABASE_URL; env-based single admin |
+| 2026-08-11 | Admin-driven MapLibre live map | Real map on `/admin/map` + `/track/:id`; poll ~8s; no GPS/WebSockets yet |
 
 ---
 
@@ -116,13 +118,13 @@ Follow Pulse Engineering Framework naming and commit conventions. Branch: featur
 
 - Resend requires verified **quayvox.com** domain for production from-address
 - Local admin/track APIs need `vercel dev` (Vite proxies `/api`)
-- Demo features (AI chat, faux map) remain non-production
+- Live map is admin-driven positions (not device GPS / AIS); AI chat remains demo
 
 ---
 
 ## 8. Active Work
 
-Neon migration complete in code; apply SQL to Neon project; set AUTH_* in `.env` + Vercel.
+Apply `neon/migrations/003_shipment_geo.sql` on Neon; set AUTH_* in `.env` + Vercel.
 
 ---
 
@@ -135,6 +137,7 @@ Neon migration complete in code; apply SQL to Neon project; set AUTH_* in `.env`
 - `ThemeContext` + `ThemeToggle` for light/dark mode
 - `PageHero`, `PageCta`, `LegalDoc` for secondary public pages
 - Solution catalog + detail template in `app/src/data/solutions.ts` / `SolutionDetail.tsx`
+- `ShipmentMap` + `useTrackPolling` + `geoPorts` lookup
 
 ---
 
@@ -146,17 +149,18 @@ Neon migration complete in code; apply SQL to Neon project; set AUTH_* in `.env`
 | DATABASE_URL leak | Critical | Server-only env; never VITE_ |
 | Spam on contact | Medium | Honeypot + basic rate limit |
 | SPA refresh 404 | High | vercel.json rewrite to index.html |
+| Stale map without poll | Low | 8s poll + pause when tab hidden |
 
 ---
 
 ## 11. Improvement Backlog
 
-- Real map/GPS, document storage, multi-tenant orgs, carrier APIs, CI tests, multi-admin table
+- Real GPS/AIS or carrier webhooks, document storage, multi-tenant orgs, CI tests, multi-admin table
 
 ---
 
 ## 12. Collaboration Notes / Env Inventory
 
-**Client (Vite):** none required for DB/auth  
+**Client (Vite):** optional `VITE_MAP_STYLE_URL` (defaults to OpenFreeMap dark)  
 **Server (Vercel / vercel dev):** `DATABASE_URL`, `AUTH_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CONTACT_TO_EMAIL`, `PUBLIC_APP_URL`  
 **Brand:** `PUBLIC_APP_URL=https://www.quayvox.com`, `CONTACT_TO_EMAIL=info@quayvox.com`

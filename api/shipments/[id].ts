@@ -2,7 +2,14 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import { isServerConfigured, requireAdmin } from '../_lib/auth';
 import { handleOptions } from '../_lib/http';
-import { deleteShipment, insertEvent, updateShipment } from '../_lib/shipments';
+import {
+  deleteShipment,
+  insertEvent,
+  insertShipmentPosition,
+  updateShipment,
+} from '../_lib/shipments';
+
+const nullableNumber = z.number().finite().nullable().optional();
 
 const patchSchema = z
   .object({
@@ -26,6 +33,13 @@ const patchSchema = z
     tags: z.array(z.string()).optional(),
     customer_email: z.string().email().nullable().optional(),
     notes: z.string().nullable().optional(),
+    origin_lat: nullableNumber,
+    origin_lng: nullableNumber,
+    destination_lat: nullableNumber,
+    destination_lng: nullableNumber,
+    current_lat: nullableNumber,
+    current_lng: nullableNumber,
+    position_label: z.string().trim().max(200).nullable().optional(),
     eventMessage: z.string().optional(),
     eventLocation: z.string().optional(),
   })
@@ -59,17 +73,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Invalid update payload', details: parsed.error.flatten() });
     }
 
-    const { eventMessage, eventLocation, ...patch } = parsed.data;
+    const { eventMessage, eventLocation, position_label, ...patch } = parsed.data;
+
+    const hasCurrentLat = Object.prototype.hasOwnProperty.call(parsed.data, 'current_lat');
+    const hasCurrentLng = Object.prototype.hasOwnProperty.call(parsed.data, 'current_lng');
+    if ((hasCurrentLat || hasCurrentLng) && !(hasCurrentLat && hasCurrentLng)) {
+      return res.status(400).json({ error: 'current_lat and current_lng must be set together' });
+    }
+    if (
+      hasCurrentLat &&
+      hasCurrentLng &&
+      parsed.data.current_lat != null &&
+      parsed.data.current_lng == null
+    ) {
+      return res.status(400).json({ error: 'current_lat and current_lng must both be numbers or both null' });
+    }
 
     try {
       const row = await updateShipment(id, patch);
       if (!row) return res.status(404).json({ error: 'Shipment not found' });
 
+      const lat = row.current_lat != null ? Number(row.current_lat) : null;
+      const lng = row.current_lng != null ? Number(row.current_lng) : null;
+      if (hasCurrentLat && hasCurrentLng && lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+        await insertShipmentPosition({
+          shipment_id: id,
+          lat,
+          lng,
+          label: position_label ?? eventLocation ?? null,
+        });
+      }
+
       if (eventMessage || parsed.data.status) {
         await insertEvent({
           shipment_id: id,
           status: (row.status as string) || null,
-          location: eventLocation || (row.destination as string) || null,
+          location:
+            eventLocation ||
+            position_label ||
+            (lat != null && lng != null ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null) ||
+            (row.destination as string) ||
+            null,
           message: eventMessage || `Status updated to ${row.status}`,
         });
       }

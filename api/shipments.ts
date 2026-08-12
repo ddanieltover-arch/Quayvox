@@ -4,6 +4,8 @@ import { isServerConfigured, requireAdmin } from './_lib/auth';
 import { handleOptions } from './_lib/http';
 import { insertEvent, insertShipment, listShipments } from './_lib/shipments';
 
+const nullableNumber = z.number().finite().nullable().optional();
+
 const createSchema = z.object({
   tracking_number: z.string().trim().min(3).max(64),
   origin: z.string().trim().min(1),
@@ -25,6 +27,12 @@ const createSchema = z.object({
   tags: z.array(z.string()).optional(),
   customer_email: z.string().email().nullable().optional(),
   notes: z.string().nullable().optional(),
+  origin_lat: nullableNumber,
+  origin_lng: nullableNumber,
+  destination_lat: nullableNumber,
+  destination_lng: nullableNumber,
+  current_lat: nullableNumber,
+  current_lng: nullableNumber,
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

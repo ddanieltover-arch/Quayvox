@@ -22,6 +22,13 @@ export interface Shipment {
   tags: string[];
   customerEmail?: string | null;
   notes?: string | null;
+  originLat?: number | null;
+  originLng?: number | null;
+  destinationLat?: number | null;
+  destinationLng?: number | null;
+  currentLat?: number | null;
+  currentLng?: number | null;
+  currentLocationUpdatedAt?: string | null;
 }
 
 export const generateMockShipments = (): Shipment[] => [

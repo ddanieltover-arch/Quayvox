@@ -35,7 +35,7 @@ interface ShipmentContextType {
   addShipment: (shipment: NewShipmentInput) => Promise<ShipmentWithExtras | null>;
   updateShipment: (
     id: string,
-    updates: Partial<ShipmentWithExtras>,
+    updates: Partial<ShipmentWithExtras> & { positionLabel?: string | null },
     options?: { notifyCustomer?: boolean; eventMessage?: string; eventLocation?: string }
   ) => Promise<boolean>;
   deleteShipment: (id: string) => Promise<boolean>;
@@ -134,7 +134,7 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateShipment = useCallback(
     async (
       id: string,
-      updates: Partial<ShipmentWithExtras>,
+      updates: Partial<ShipmentWithExtras> & { positionLabel?: string | null },
       options?: { notifyCustomer?: boolean; eventMessage?: string; eventLocation?: string }
     ) => {
       if (!configured || !isAdmin) {
@@ -145,6 +145,8 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const existing = shipments.find((s) => s.id === id);
       const row = toShipmentUpdate(updates);
       const statusChanged = updates.status && existing && updates.status !== existing.status;
+      const positionChanged =
+        updates.currentLat !== undefined || updates.currentLng !== undefined;
 
       try {
         const res = await fetch(`/api/shipments/${encodeURIComponent(id)}`, {
@@ -155,8 +157,12 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ...row,
             eventMessage:
               options?.eventMessage ||
-              (statusChanged ? `Status updated to ${updates.status}` : undefined),
-            eventLocation: options?.eventLocation,
+              (statusChanged
+                ? `Status updated to ${updates.status}`
+                : positionChanged
+                  ? 'Location updated'
+                  : undefined),
+            eventLocation: options?.eventLocation ?? updates.positionLabel ?? undefined,
           }),
         });
         const data = (await res.json()) as { shipment?: ShipmentRow; error?: string };
