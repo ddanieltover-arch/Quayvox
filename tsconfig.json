@@ -10,5 +10,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["emails/**/*", "api/**/*", "scripts/**/*"]
+  "include": ["emails/**/*", "api/**/*", "server/**/*", "scripts/**/*"]
 }

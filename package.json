@@ -18,9 +18,11 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "esbuild": "^0.25.12",
     "pg": "^8.23.0"
   },
   "scripts": {
+    "build:api": "node scripts/bundle-api.mjs",
     "db:migrate": "node scripts/apply-neon-migrations.mjs",
     "email:test": "npx tsx scripts/send-test-emails.ts"
   }
