@@ -18,7 +18,7 @@
 | Design system | Custom navy/cobalt tokens + shadcn/ui |
 | Primary risks | Missing env/secrets block deploy; cookie auth misconfig |
 | Open decisions | None — Neon + env admin auth locked |
-| Recent changes | New shipment party/freight fields + Neon `004_shipment_party_details.sql` |
+| Recent changes | Shipment `item_name` (cargo/item) on create/edit + Neon `007_shipment_item_name.sql` |
 | Next priorities | Domain DNS + Resend verify; Deploy QA |
 
 ---

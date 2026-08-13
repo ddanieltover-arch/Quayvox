@@ -67,6 +67,7 @@ export function MetricGrid({
   extra?: Array<{ label: string; value: string }>;
 }) {
   const items = [
+    { label: 'Item', value: displayMetricValue(shipment.itemName) },
     { label: 'Mode', value: displayMetricValue(shipment.mode) },
     { label: 'Carrier', value: displayMetricValue(shipment.carrier) },
     { label: 'Priority', value: displayMetricValue(shipment.priority) },

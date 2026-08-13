@@ -16,6 +16,7 @@ export interface ShipmentEmailData {
   customerEmail: string | null;
   senderEmail: string | null;
   receiverEmail: string | null;
+  itemName: string | null;
   currentLat: number | null;
   currentLng: number | null;
   positionLabel: string | null;

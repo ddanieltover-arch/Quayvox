@@ -111,6 +111,7 @@ export function ShipmentDetailsDialog({ shipment }: ShipmentDetailsDialogProps) 
           </DetailSection>
 
           <DetailSection title="Freight">
+            <DetailRow label="Item" value={shipment.itemName} />
             <DetailRow label="Weight" value={shipment.weight ? `${shipment.weight} kg` : '—'} />
             <DetailRow label="Volume" value={shipment.volume != null && shipment.volume > 0 ? `${shipment.volume}` : '—'} />
             <DetailRow

@@ -24,6 +24,7 @@ function formFromShipment(shipment: ShipmentWithExtras) {
     progress: shipment.progress,
     eta: shipment.eta?.slice(0, 10) || '',
     notes: shipment.notes || '',
+    itemName: shipment.itemName || '',
     currentAddress: shipment.currentAddress || '',
     senderName: shipment.senderName || shipment.shipper || '',
     senderPhone: shipment.senderPhone || '',
@@ -79,6 +80,7 @@ export function ShipmentEditModal({ shipment, onClose }: ShipmentEditModalProps)
       progress: form.progress,
       eta: form.eta || '',
       notes: form.notes.trim() || null,
+      itemName: form.itemName.trim(),
       currentAddress: form.currentAddress.trim() || null,
       origin: senderAddress,
       destination: receiverAddress,
@@ -268,6 +270,17 @@ export function ShipmentEditModal({ shipment, onClose }: ShipmentEditModalProps)
 
           <section className="space-y-3">
             <h3 className="text-xs font-mono uppercase text-cobalt">Tracking & notes</h3>
+            <div>
+              <label className="block text-xs font-mono uppercase text-text-secondary mb-2">
+                Item / cargo name
+              </label>
+              <input
+                placeholder="e.g., Electronics components"
+                value={form.itemName}
+                onChange={(e) => setField('itemName', e.target.value)}
+                className={fieldClass}
+              />
+            </div>
             <textarea
               placeholder="Current address"
               value={form.currentAddress}

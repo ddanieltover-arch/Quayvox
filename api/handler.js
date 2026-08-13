@@ -656,6 +656,7 @@ function MetricGrid({
   extra
 }) {
   const items = [
+    { label: "Item", value: displayMetricValue(shipment.itemName) },
     { label: "Mode", value: displayMetricValue(shipment.mode) },
     { label: "Carrier", value: displayMetricValue(shipment.carrier) },
     { label: "Priority", value: displayMetricValue(shipment.priority) },
@@ -1671,6 +1672,7 @@ function rowToShipmentEmailData(row, extras) {
     customerEmail: row.customer_email ?? null,
     senderEmail: row.sender_email ?? null,
     receiverEmail: row.receiver_email ?? row.customer_email ?? null,
+    itemName: row.item_name != null && String(row.item_name).trim() ? String(row.item_name) : null,
     currentLat: Number.isFinite(lat) ? lat : null,
     currentLng: Number.isFinite(lng) ? lng : null,
     positionLabel: extras?.positionLabel ?? null
@@ -2097,6 +2099,7 @@ var UPDATE_COLUMNS = /* @__PURE__ */ new Set([
   "tags",
   "customer_email",
   "notes",
+  "item_name",
   "sender_name",
   "sender_phone",
   "sender_email",
@@ -2294,7 +2297,7 @@ async function insertShipment(payload) {
     insert into public.shipments (
       tracking_number, origin, destination, carrier, status, weight,
       dim_l, dim_w, dim_h, cost, eta, progress, mode, priority,
-      shipper, consignee, documents, tags, customer_email, notes,
+      shipper, consignee, documents, tags, customer_email, notes, item_name,
       sender_name, sender_phone, sender_email, sender_address,
       sender_street, sender_city, sender_state, sender_postal, sender_country,
       receiver_name, receiver_phone, receiver_email, receiver_address,
@@ -2323,6 +2326,7 @@ async function insertShipment(payload) {
       ${resolved.tags},
       ${receiverEmail},
       ${asNullableString2(resolved.notes)},
+      ${asString(resolved.item_name)},
       ${senderName},
       ${asString(resolved.sender_phone)},
       ${asNullableString2(resolved.sender_email)},
@@ -2407,6 +2411,7 @@ async function updateShipment(id, patch) {
       tags = ${withGeo.tags},
       customer_email = ${receiverEmail},
       notes = ${asNullableString2(withGeo.notes)},
+      item_name = ${asString(withGeo.item_name)},
       sender_name = ${senderName},
       sender_phone = ${asString(withGeo.sender_phone)},
       sender_email = ${asNullableString2(withGeo.sender_email)},
@@ -2684,6 +2689,7 @@ var createSchema = import_zod5.z.object({
   tags: import_zod5.z.array(import_zod5.z.string()).optional(),
   customer_email: optionalEmail,
   notes: import_zod5.z.string().nullable().optional(),
+  item_name: import_zod5.z.string().trim().min(1).max(200),
   ...partyFields,
   origin_lat: nullableNumber,
   origin_lng: nullableNumber,
@@ -2713,6 +2719,7 @@ var patchSchema = import_zod5.z.object({
   tags: import_zod5.z.array(import_zod5.z.string()).optional(),
   customer_email: optionalEmail,
   notes: import_zod5.z.string().nullable().optional(),
+  item_name: import_zod5.z.string().trim().max(200).optional(),
   ...partyFields,
   origin_lat: nullableNumber,
   origin_lng: nullableNumber,
@@ -2749,6 +2756,7 @@ async function handleShipmentsCollection(req, res) {
       tags: req.body?.tags ?? [],
       customer_email: req.body?.customer_email ?? null,
       notes: req.body?.notes ?? null,
+      item_name: req.body?.item_name ?? "",
       eta: req.body?.eta ?? null
     });
     if (!parsed.success) {

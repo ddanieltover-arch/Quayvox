@@ -47,6 +47,7 @@ const CreateShipment = () => {
     height: '',
     paymentMethod: '',
     description: '',
+    itemName: '',
     mode: 'Ocean' as 'Air' | 'Ocean' | 'Rail' | 'Road',
     priority: 'Standard' as 'Express' | 'Standard' | 'Economy',
     tags: '',
@@ -79,6 +80,7 @@ const CreateShipment = () => {
     }
     if (step === 1) {
       const required = [
+        form.itemName,
         form.weight,
         form.volume,
         form.height,
@@ -87,7 +89,7 @@ const CreateShipment = () => {
         form.paymentMethod,
       ];
       if (required.some((v) => !String(v).trim())) {
-        toast.error('Fill all required freight metric fields');
+        toast.error('Fill all required item and freight fields');
         return false;
       }
       return true;
@@ -136,6 +138,7 @@ const CreateShipment = () => {
         tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
         customerEmail: form.receiverEmail.trim(),
         notes: form.description.trim() || null,
+        itemName: form.itemName.trim(),
         senderName: form.senderName.trim(),
         senderPhone: form.senderPhone.trim(),
         senderEmail: form.senderEmail.trim() || null,
@@ -270,6 +273,19 @@ const CreateShipment = () => {
             </section>
 
             <section className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-text-primary">Item being shipped</h3>
+              <div>
+                <label className="block text-xs font-mono text-text-secondary mb-1.5">ITEM / CARGO NAME*</label>
+                <input
+                  className={inputClass}
+                  value={form.itemName}
+                  onChange={(e) => updateField('itemName', e.target.value)}
+                  placeholder="e.g., Electronics components, Furniture set, Auto parts"
+                />
+              </div>
+            </section>
+
+            <section className="space-y-4">
               <h3 className="font-display font-semibold text-lg text-text-primary">Freight Metrics & Details</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -395,6 +411,7 @@ const CreateShipment = () => {
                 { label: 'Weight / Volume', value: `${form.weight} kg / ${form.volume}` },
                 { label: 'Dimensions (L×W×H)', value: `${form.length} × ${form.width} × ${form.height}` },
                 { label: 'Payment', value: form.paymentMethod },
+                { label: 'Item', value: form.itemName },
                 { label: 'Mode / Priority', value: `${form.mode} · ${form.priority}` },
                 { label: 'Carrier', value: DEFAULT_CARRIER },
                 { label: 'Description', value: form.description || '—' },

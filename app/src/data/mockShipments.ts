@@ -23,6 +23,7 @@ export interface Shipment {
   tags: string[];
   customerEmail?: string | null;
   notes?: string | null;
+  itemName?: string;
   senderName?: string;
   senderPhone?: string;
   senderEmail?: string | null;

@@ -66,6 +66,7 @@ const createSchema = z.object({
   tags: z.array(z.string()).optional(),
   customer_email: optionalEmail,
   notes: z.string().nullable().optional(),
+  item_name: z.string().trim().min(1).max(200),
   ...partyFields,
   origin_lat: nullableNumber,
   origin_lng: nullableNumber,
@@ -97,6 +98,7 @@ const patchSchema = z
     tags: z.array(z.string()).optional(),
     customer_email: optionalEmail,
     notes: z.string().nullable().optional(),
+    item_name: z.string().trim().max(200).optional(),
     ...partyFields,
     origin_lat: nullableNumber,
     origin_lng: nullableNumber,
@@ -139,6 +141,7 @@ export async function handleShipmentsCollection(req: VercelRequest, res: VercelR
       tags: req.body?.tags ?? [],
       customer_email: req.body?.customer_email ?? null,
       notes: req.body?.notes ?? null,
+      item_name: req.body?.item_name ?? '',
       eta: req.body?.eta ?? null,
     });
     if (!parsed.success) {

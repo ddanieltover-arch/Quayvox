@@ -45,6 +45,7 @@ export interface ShipmentRow {
   tags: string[] | null;
   customer_email: string | null;
   notes: string | null;
+  item_name?: string | null;
   sender_name?: string | null;
   sender_phone?: string | null;
   sender_email?: string | null;
@@ -164,6 +165,7 @@ export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
     tags: row.tags ?? [],
     customerEmail: row.customer_email,
     notes: row.notes,
+    itemName: row.item_name ?? '',
     senderName: row.sender_name ?? row.shipper ?? '',
     senderPhone: row.sender_phone ?? '',
     senderEmail: row.sender_email ?? null,
@@ -248,6 +250,7 @@ export function toShipmentInsert(
     tags: data.tags ?? [],
     customer_email: receiverEmail,
     notes: data.notes ?? null,
+    item_name: data.itemName?.trim() || '',
     sender_name: senderName,
     sender_phone: data.senderPhone ?? '',
     sender_email: data.senderEmail ?? null,
@@ -304,6 +307,7 @@ export function toShipmentUpdate(updates: Partial<ShipmentWithExtras> & { positi
   if (updates.tags !== undefined) row.tags = updates.tags;
   if (updates.customerEmail !== undefined) row.customer_email = updates.customerEmail;
   if (updates.notes !== undefined) row.notes = updates.notes;
+  if (updates.itemName !== undefined) row.item_name = updates.itemName;
   if (updates.senderName !== undefined) {
     row.sender_name = updates.senderName;
     row.shipper = updates.shipper ?? updates.senderName;

@@ -37,6 +37,7 @@ export function rowToShipmentEmailData(
       (row.receiver_email as string | null) ??
       (row.customer_email as string | null) ??
       null,
+    itemName: row.item_name != null && String(row.item_name).trim() ? String(row.item_name) : null,
     currentLat: Number.isFinite(lat) ? lat : null,
     currentLng: Number.isFinite(lng) ? lng : null,
     positionLabel: extras?.positionLabel ?? null,
