@@ -111,7 +111,7 @@ const Hero = () => {
         >
           <img
             src={images.heroMap}
-            alt="Quayvox delivery team handing off a package at a yellow van"
+            alt="Global logistics network — port, vessels, air freight, and connected routes"
             className="w-full h-full object-cover object-center"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-navy-900/55 via-navy-900/10 to-transparent" />
@@ -124,7 +124,7 @@ const Hero = () => {
               </div>
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-navy-900/80 backdrop-blur-sm border border-white/10">
                 <Truck className="w-3.5 h-3.5 text-cobalt" />
-                <span className="text-xs font-mono text-text-secondary">LAST-MILE DELIVERY</span>
+                <span className="text-xs font-mono text-text-secondary">GLOBAL FREIGHT</span>
               </div>
             </div>
           </div>

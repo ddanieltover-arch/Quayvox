@@ -3,7 +3,7 @@ import featureCompliance from '@/assets/images/feature_compliance.jpg';
 import featureOptimization from '@/assets/images/feature_optimization.jpg';
 import featureTracking from '@/assets/images/feature_tracking.jpg';
 import globalCargoPlane from '@/assets/images/global_cargo_plane.jpg';
-import heroDelivery from '@/assets/images/hero_delivery.png';
+import heroQuayvox from '@/assets/images/hero_quayvox.png';
 import opsCenterBg from '@/assets/images/ops_center_bg.jpg';
 import routeHighway from '@/assets/images/route_highway.jpg';
 import visibilityAerial from '@/assets/images/visibility_aerial.jpg';
@@ -15,7 +15,7 @@ export const images = {
   featureOptimization,
   featureTracking,
   globalCargoPlane,
-  heroMap: heroDelivery,
+  heroMap: heroQuayvox,
   opsCenterBg,
   routeHighway,
   visibilityAerial,
