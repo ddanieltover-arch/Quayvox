@@ -10,6 +10,9 @@ export interface MapStopGeo {
   label: string;
   lat?: number | null;
   lng?: number | null;
+  status?: string | null;
+  message?: string | null;
+  occurredAt?: string | null;
 }
 
 export interface MapShipmentGeo {
@@ -149,8 +152,20 @@ function coordsClose(
   return Math.abs(aLat - bLat) < epsilon && Math.abs(aLng - bLng) < epsilon;
 }
 
-function uniqueGeocodedStops(s: MapShipmentGeo): Array<{ lat: number; lng: number; label: string }> {
-  const out: Array<{ lat: number; lng: number; label: string }> = [];
+function uniqueGeocodedStops(s: MapShipmentGeo): Array<{
+  lat: number;
+  lng: number;
+  label: string;
+  status?: string | null;
+  message?: string | null;
+}> {
+  const out: Array<{
+    lat: number;
+    lng: number;
+    label: string;
+    status?: string | null;
+    message?: string | null;
+  }> = [];
   for (const stop of s.stops ?? []) {
     if (!isValidCoord(stop.lat, stop.lng)) continue;
     const lat = stop.lat as number;
@@ -158,9 +173,17 @@ function uniqueGeocodedStops(s: MapShipmentGeo): Array<{ lat: number; lng: numbe
     const last = out[out.length - 1];
     if (last && coordsClose(last.lat, last.lng, lat, lng)) {
       last.label = stop.label.trim() || last.label;
+      last.status = stop.status ?? last.status;
+      last.message = stop.message ?? last.message;
       continue;
     }
-    out.push({ lat, lng, label: stop.label.trim() || 'Stop' });
+    out.push({
+      lat,
+      lng,
+      label: stop.label.trim() || 'Stop',
+      status: stop.status,
+      message: stop.message,
+    });
   }
   return out;
 }
@@ -701,7 +724,9 @@ export function ShipmentMap({
         lat: number,
         lng: number,
         kind: 'origin' | 'destination' | 'current' | 'history',
-        label: string
+        label: string,
+        stopStatus?: string | null,
+        stopMessage?: string | null
       ) => {
         let startLat = lat;
         let startLng = lng;
@@ -714,7 +739,20 @@ export function ShipmentMap({
           }
         }
 
-        const isOnHold = s.status === 'On Hold';
+        const pinStatus = (stopStatus?.trim() || (kind === 'current' ? s.status : '')).trim();
+        const isOnHold = kind === 'current' && (pinStatus === 'On Hold' || s.status === 'On Hold');
+        const statusLine =
+          isOnHold && kind === 'current'
+            ? '<span style="color:#DC2626;font-weight:700">On Hold — action required</span>'
+            : pinStatus
+              ? escapeHtml(pinStatus)
+              : kind === 'history'
+                ? 'Previous location'
+                : escapeHtml(s.status);
+        const messageLine =
+          stopMessage?.trim() && stopMessage.trim() !== label
+            ? `<br/>${escapeHtml(stopMessage.trim())}`
+            : '';
         const marker = L.marker([startLat, startLng], {
           icon: createMarkerIcon(kind, s.id === selectedId, isOnHold),
           keyboard: false,
@@ -723,11 +761,7 @@ export function ShipmentMap({
         })
           .bindPopup(
             `<div style="font:12px/1.4 system-ui,sans-serif;color:#0B1020">
-              <strong>${escapeHtml(s.trackingNumber)}</strong><br/>${escapeHtml(label)}<br/>${
-                isOnHold && kind === 'current'
-                  ? '<span style="color:#DC2626;font-weight:700">On Hold — action required</span>'
-                  : escapeHtml(s.status)
-              }
+              <strong>${escapeHtml(s.trackingNumber)}</strong><br/>${escapeHtml(label)}${messageLine}<br/>${statusLine}
             </div>`
           )
           .addTo(map);
@@ -755,7 +789,9 @@ export function ShipmentMap({
             stop.lat,
             stop.lng,
             isLatest ? 'current' : 'history',
-            isLatest ? `Latest update — ${stop.label}` : stop.label
+            isLatest ? `Latest update — ${stop.label}` : stop.label,
+            stop.status,
+            stop.message
           );
           if (isLatest) {
             seenCurrentIds.add(s.id);

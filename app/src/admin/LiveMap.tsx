@@ -50,7 +50,7 @@ const LiveMap = () => {
   const [showPorts, setShowPorts] = useState(() => readStoredFlag(MAP_PORTS_KEY, true));
   const [layersOpen, setLayersOpen] = useState(false);
   const [positions, setPositions] = useState<ShipmentPosition[]>([]);
-  const [eventStops, setEventStops] = useState<{ label: string }[]>([]);
+  const [eventStops, setEventStops] = useState<ReturnType<typeof mapStopsFromEvents>>([]);
   const [lastPoll, setLastPoll] = useState<number | null>(null);
 
   useEffect(() => {

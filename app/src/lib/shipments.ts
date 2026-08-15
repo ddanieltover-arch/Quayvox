@@ -200,18 +200,35 @@ export function mapEventRow(row: ShipmentEventRow): ShipmentEvent {
   };
 }
 
+export type MapEventStop = {
+  label: string;
+  status: string | null;
+  message: string;
+  occurredAt: string;
+};
+
 /** Unique timeline addresses, oldest first — used as map pins. */
-export function mapStopsFromEvents(events: ShipmentEvent[]): { label: string }[] {
+export function mapStopsFromEvents(events: ShipmentEvent[]): MapEventStop[] {
   const chronological = [...events].sort(
     (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
   );
-  const stops: { label: string }[] = [];
+  const stops: MapEventStop[] = [];
   for (const event of chronological) {
     const label = event.location?.trim();
     if (!label) continue;
     const last = stops[stops.length - 1];
-    if (last && last.label.toLowerCase() === label.toLowerCase()) continue;
-    stops.push({ label });
+    if (last && last.label.toLowerCase() === label.toLowerCase()) {
+      last.status = event.status;
+      last.message = event.message;
+      last.occurredAt = event.occurredAt;
+      continue;
+    }
+    stops.push({
+      label,
+      status: event.status,
+      message: event.message,
+      occurredAt: event.occurredAt,
+    });
   }
   return stops;
 }
