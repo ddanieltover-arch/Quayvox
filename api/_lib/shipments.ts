@@ -1,6 +1,6 @@
 import { getSql } from './db';
 import { lookupPortCoords } from './geoPorts';
-import { enrichShipmentGeo, needsGeoEnrichment } from './geocode';
+import { enrichShipmentGeo, geocodeAddress, needsGeoEnrichment } from './geocode';
 
 const UPDATE_COLUMNS = new Set([
   'tracking_number',
@@ -585,6 +585,18 @@ export async function insertEvent(input: {
     )
     returning *
   `;
+  const location = input.location?.trim();
+  if (location) {
+    const coords = await geocodeAddress(location);
+    if (coords) {
+      await recordShipmentTrailPoint({
+        shipment_id: input.shipment_id,
+        lat: coords[0],
+        lng: coords[1],
+        label: location,
+      });
+    }
+  }
   return rows[0] ?? null;
 }
 

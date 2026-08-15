@@ -200,6 +200,22 @@ export function mapEventRow(row: ShipmentEventRow): ShipmentEvent {
   };
 }
 
+/** Unique timeline addresses, oldest first — used as map pins. */
+export function mapStopsFromEvents(events: ShipmentEvent[]): { label: string }[] {
+  const chronological = [...events].sort(
+    (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
+  );
+  const stops: { label: string }[] = [];
+  for (const event of chronological) {
+    const label = event.location?.trim();
+    if (!label) continue;
+    const last = stops[stops.length - 1];
+    if (last && last.label.toLowerCase() === label.toLowerCase()) continue;
+    stops.push({ label });
+  }
+  return stops;
+}
+
 export function mapPositionRow(row: ShipmentPositionRow): ShipmentPosition {
   return {
     id: row.id,

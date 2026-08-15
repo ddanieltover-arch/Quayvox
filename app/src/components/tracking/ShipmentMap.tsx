@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MAP_TILE_LAYERS } from '@/lib/mapConfig';
+import { MAP_BASEMAPS, MAP_TILE_LAYERS, type MapBasemapId } from '@/lib/mapConfig';
 import { interpolateCoords, lookupPortCoords, PORT_COORDINATES, type GeoCoord } from '@/lib/geoPorts';
 import { geocodeAddressClient } from '@/lib/geocodeClient';
 import type { ShipmentPosition } from '@/lib/shipments';
+
+export interface MapStopGeo {
+  label: string;
+  lat?: number | null;
+  lng?: number | null;
+}
 
 export interface MapShipmentGeo {
   id: string;
@@ -21,6 +27,8 @@ export interface MapShipmentGeo {
   currentLat?: number | null;
   currentLng?: number | null;
   positions?: ShipmentPosition[];
+  /** Timeline addresses to pin even when the GPS trail is incomplete. */
+  stops?: MapStopGeo[];
 }
 
 interface ShipmentMapProps {
@@ -30,6 +38,78 @@ interface ShipmentMapProps {
   showPorts?: boolean;
   className?: string;
   interactive?: boolean;
+  basemap?: MapBasemapId;
+  satelliteLabels?: boolean;
+}
+
+function applyBasemapTiles(
+  map: L.Map,
+  basemap: MapBasemapId,
+  satelliteLabels: boolean,
+  tileLayerRef: { current: L.TileLayer | null },
+  overlayLayerRef: { current: L.TileLayer | null },
+  tileFallbackRef: { current: number },
+  setMapError: (msg: string | null) => void,
+  useFallback: boolean
+) {
+  const config = MAP_BASEMAPS[basemap];
+  const source = useFallback ? config.fallback ?? MAP_TILE_LAYERS[MAP_TILE_LAYERS.length - 1] : config;
+  if (!source) {
+    setMapError('Map tiles failed to load');
+    return;
+  }
+
+  tileFallbackRef.current = useFallback ? 1 : 0;
+  let tileErrors = 0;
+
+  if (tileLayerRef.current) {
+    map.removeLayer(tileLayerRef.current);
+    tileLayerRef.current = null;
+  }
+  if (overlayLayerRef.current) {
+    map.removeLayer(overlayLayerRef.current);
+    overlayLayerRef.current = null;
+  }
+
+  const layer = L.tileLayer(source.url, {
+    attribution: source.attribution,
+    subdomains: source.subdomains,
+    maxZoom: source.maxZoom ?? 19,
+  });
+
+  layer.on('tileerror', () => {
+    tileErrors += 1;
+    if (!useFallback && tileErrors >= 3 && config.fallback) {
+      applyBasemapTiles(
+        map,
+        basemap,
+        satelliteLabels,
+        tileLayerRef,
+        overlayLayerRef,
+        tileFallbackRef,
+        setMapError,
+        true
+      );
+    } else if (tileErrors >= 3) {
+      setMapError('Map tiles failed to load');
+    }
+  });
+
+  layer.addTo(map);
+  tileLayerRef.current = layer;
+
+  if (basemap === 'satellite' && satelliteLabels && config.labelsOverlay && !useFallback) {
+    const overlay = L.tileLayer(config.labelsOverlay.url, {
+      attribution: config.labelsOverlay.attribution,
+      subdomains: config.labelsOverlay.subdomains,
+      maxZoom: config.labelsOverlay.maxZoom ?? 19,
+      pane: 'overlayPane',
+    });
+    overlay.addTo(map);
+    overlayLayerRef.current = overlay;
+  }
+
+  setMapError(null);
 }
 
 /** Allow close clusters to zoom in; wide routes still fit naturally. */
@@ -57,6 +137,32 @@ function padTinyBounds(bounds: L.LatLngBounds): L.LatLngBounds {
     [center.lat - pad, center.lng - pad],
     [center.lat + pad, center.lng + pad]
   );
+}
+
+function coordsClose(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number,
+  epsilon = 0.00035
+): boolean {
+  return Math.abs(aLat - bLat) < epsilon && Math.abs(aLng - bLng) < epsilon;
+}
+
+function uniqueGeocodedStops(s: MapShipmentGeo): Array<{ lat: number; lng: number; label: string }> {
+  const out: Array<{ lat: number; lng: number; label: string }> = [];
+  for (const stop of s.stops ?? []) {
+    if (!isValidCoord(stop.lat, stop.lng)) continue;
+    const lat = stop.lat as number;
+    const lng = stop.lng as number;
+    const last = out[out.length - 1];
+    if (last && coordsClose(last.lat, last.lng, lat, lng)) {
+      last.label = stop.label.trim() || last.label;
+      continue;
+    }
+    out.push({ lat, lng, label: stop.label.trim() || 'Stop' });
+  }
+  return out;
 }
 
 function isValidCoord(lat: number | null | undefined, lng: number | null | undefined): boolean {
@@ -115,13 +221,17 @@ function shipmentHasGeo(s: MapShipmentGeo): boolean {
   return (
     resolveOriginCoord(s) != null ||
     resolveDestinationCoord(s) != null ||
-    resolveDisplayPosition(s) != null
+    resolveDisplayPosition(s) != null ||
+    uniqueGeocodedStops(s).length > 0
   );
 }
 
 function shipmentHasAddress(s: MapShipmentGeo): boolean {
   return Boolean(
-    s.origin?.trim() || s.destination?.trim() || s.currentAddress?.trim()
+    s.origin?.trim() ||
+      s.destination?.trim() ||
+      s.currentAddress?.trim() ||
+      (s.stops ?? []).some((stop) => stop.label.trim())
   );
 }
 
@@ -156,10 +266,30 @@ async function resolveShipmentGeo(s: MapShipmentGeo): Promise<MapShipmentGeo> {
     }
   }
 
+  if (next.stops?.length) {
+    const resolvedStops: MapStopGeo[] = [];
+    for (const stop of next.stops) {
+      if (isValidCoord(stop.lat, stop.lng) || !stop.label.trim()) {
+        resolvedStops.push(stop);
+        continue;
+      }
+      const coords = await geocodeAddressClient(stop.label);
+      resolvedStops.push(
+        coords ? { ...stop, lat: coords[0], lng: coords[1] } : stop
+      );
+    }
+    next.stops = resolvedStops;
+  }
+
   return next;
 }
 
 function buildRouteLatLngs(s: MapShipmentGeo): L.LatLngExpression[] {
+  const eventStops = uniqueGeocodedStops(s);
+  if (eventStops.length >= 2) {
+    return eventStops.map((stop) => [stop.lat, stop.lng]);
+  }
+
   const coords: L.LatLngExpression[] = [];
   const origin = resolveOriginCoord(s);
   const destination = resolveDestinationCoord(s);
@@ -354,6 +484,8 @@ export function ShipmentMap({
   showPorts = false,
   className = '',
   interactive = true,
+  basemap = 'default',
+  satelliteLabels = false,
 }: ShipmentMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -361,12 +493,17 @@ export function ShipmentMap({
   const markersRef = useRef<L.Marker[]>([]);
   const portsLayerRef = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const overlayLayerRef = useRef<L.TileLayer | null>(null);
   const fittedKeyRef = useRef<string>('');
   const drawnRouteIdsRef = useRef<Set<string>>(new Set());
   const stopRouteFlowRef = useRef<(() => void) | null>(null);
   const prevCurrentPositionsRef = useRef<Map<string, GeoCoord>>(new Map());
   const stopMarkerAnimsRef = useRef<(() => void)[]>([]);
-  const tileIndexRef = useRef(0);
+  const tileFallbackRef = useRef(0);
+  const basemapRef = useRef(basemap);
+  const labelsRef = useRef(satelliteLabels);
+  basemapRef.current = basemap;
+  labelsRef.current = satelliteLabels;
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [resolvedShipments, setResolvedShipments] = useState<MapShipmentGeo[]>(shipments);
@@ -386,7 +523,8 @@ export function ShipmentMap({
       (s) =>
         (!isValidCoord(s.originLat, s.originLng) && Boolean(s.origin?.trim())) ||
         (!isValidCoord(s.destinationLat, s.destinationLng) && Boolean(s.destination?.trim())) ||
-        (!isValidCoord(s.currentLat, s.currentLng) && Boolean(s.currentAddress?.trim()))
+        (!isValidCoord(s.currentLat, s.currentLng) && Boolean(s.currentAddress?.trim())) ||
+        (s.stops ?? []).some((stop) => Boolean(stop.label.trim()) && !isValidCoord(stop.lat, stop.lng))
     );
 
     if (!needsLookup) {
@@ -428,7 +566,6 @@ export function ShipmentMap({
 
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
-    let tileErrors = 0;
 
     const map = L.map(containerRef.current, {
       center: [20, 10],
@@ -443,41 +580,16 @@ export function ShipmentMap({
 
     mapRef.current = map;
 
-    const mountTileLayer = (index: number) => {
-      if (disposed) return;
-      const config = MAP_TILE_LAYERS[index];
-      if (!config) {
-        setMapError('Map tiles failed to load');
-        return;
-      }
-
-      tileIndexRef.current = index;
-      tileErrors = 0;
-
-      if (tileLayerRef.current) {
-        map.removeLayer(tileLayerRef.current);
-      }
-
-      const layer = L.tileLayer(config.url, {
-        attribution: config.attribution,
-        subdomains: config.subdomains,
-        maxZoom: 19,
-      });
-
-      layer.on('tileerror', () => {
-        tileErrors += 1;
-        if (tileErrors >= 3 && index + 1 < MAP_TILE_LAYERS.length) {
-          mountTileLayer(index + 1);
-        } else if (tileErrors >= 3 && index + 1 >= MAP_TILE_LAYERS.length) {
-          setMapError('Map tiles failed to load');
-        }
-      });
-
-      layer.addTo(map);
-      tileLayerRef.current = layer;
-    };
-
-    mountTileLayer(tileIndexRef.current);
+    applyBasemapTiles(
+      map,
+      basemapRef.current,
+      labelsRef.current,
+      tileLayerRef,
+      overlayLayerRef,
+      tileFallbackRef,
+      setMapError,
+      false
+    );
 
     map.whenReady(() => {
       if (disposed) return;
@@ -498,6 +610,7 @@ export function ShipmentMap({
       markersRef.current = [];
       portsLayerRef.current = null;
       tileLayerRef.current = null;
+      overlayLayerRef.current = null;
       stopRouteFlowRef.current?.();
       stopRouteFlowRef.current = null;
       stopMarkerAnimsRef.current.forEach((stop) => stop());
@@ -510,6 +623,21 @@ export function ShipmentMap({
       setMapReady(false);
     };
   }, [hasGeo, interactive]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    applyBasemapTiles(
+      map,
+      basemap,
+      satelliteLabels,
+      tileLayerRef,
+      overlayLayerRef,
+      tileFallbackRef,
+      setMapError,
+      false
+    );
+  }, [mapReady, basemap, satelliteLabels]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -618,29 +746,45 @@ export function ShipmentMap({
 
       const origin = resolveOriginCoord(s);
       const destination = resolveDestinationCoord(s);
-      if (origin) addMarker(origin[0], origin[1], 'origin', 'Origin');
-      if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
-      const current = resolveDisplayPosition(s);
-      const trail = (s.positions ?? []).filter((p) => isValidCoord(p.lat, p.lng));
-      for (const point of trail) {
-        const sameAsCurrent =
-          current != null &&
-          Math.abs(point.lat - current[0]) < 0.00015 &&
-          Math.abs(point.lng - current[1]) < 0.00015;
-        if (sameAsCurrent) continue;
-        addMarker(point.lat, point.lng, 'history', point.label?.trim() || 'Previous location');
-      }
-      if (current) {
-        seenCurrentIds.add(s.id);
-        addMarker(
-          current[0],
-          current[1],
-          'current',
-          s.currentAddress?.trim()
-            ? `Latest update — ${s.currentAddress.trim()}`
-            : 'Latest update'
-        );
-        prevCurrentPositionsRef.current.set(s.id, [current[0], current[1]]);
+      const eventStops = uniqueGeocodedStops(s);
+
+      if (eventStops.length >= 2) {
+        eventStops.forEach((stop, index) => {
+          const isLatest = index === eventStops.length - 1;
+          addMarker(
+            stop.lat,
+            stop.lng,
+            isLatest ? 'current' : 'history',
+            isLatest ? `Latest update — ${stop.label}` : stop.label
+          );
+          if (isLatest) {
+            seenCurrentIds.add(s.id);
+            prevCurrentPositionsRef.current.set(s.id, [stop.lat, stop.lng]);
+          }
+        });
+      } else {
+        if (origin) addMarker(origin[0], origin[1], 'origin', 'Origin');
+        if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
+        const current = resolveDisplayPosition(s);
+        const trail = (s.positions ?? []).filter((p) => isValidCoord(p.lat, p.lng));
+        for (const point of trail) {
+          const sameAsCurrent =
+            current != null && coordsClose(point.lat, point.lng, current[0], current[1]);
+          if (sameAsCurrent) continue;
+          addMarker(point.lat, point.lng, 'history', point.label?.trim() || 'Previous location');
+        }
+        if (current) {
+          seenCurrentIds.add(s.id);
+          addMarker(
+            current[0],
+            current[1],
+            'current',
+            s.currentAddress?.trim()
+              ? `Latest update — ${s.currentAddress.trim()}`
+              : 'Latest update'
+          );
+          prevCurrentPositionsRef.current.set(s.id, [current[0], current[1]]);
+        }
       }
     }
 
@@ -669,7 +813,9 @@ export function ShipmentMap({
     const fitKey = `${selectedId ?? 'all'}:${geoShipments
       .map((s) => {
         const cur = resolveDisplayPosition(s);
-        return `${s.id}:${s.progress}:${cur?.[0] ?? ''}:${cur?.[1] ?? ''}:${s.currentAddress ?? ''}:${(s.positions ?? []).length}`;
+        return `${s.id}:${s.progress}:${cur?.[0] ?? ''}:${cur?.[1] ?? ''}:${s.currentAddress ?? ''}:${(s.positions ?? []).length}:${(s.stops ?? [])
+          .map((stop) => `${stop.label}:${stop.lat ?? ''}:${stop.lng ?? ''}`)
+          .join(',')}`;
       })
       .join('|')}`;
 
@@ -687,10 +833,15 @@ export function ShipmentMap({
         };
         const o = resolveOriginCoord(selected);
         const d = resolveDestinationCoord(selected);
-        if (o) extend(o[0], o[1]);
-        if (d) extend(d[0], d[1]);
-        const cur = resolveDisplayPosition(selected);
-        if (cur) extend(cur[0], cur[1]);
+        const stops = uniqueGeocodedStops(selected);
+        if (stops.length >= 2) {
+          for (const stop of stops) extend(stop.lat, stop.lng);
+        } else {
+          if (o) extend(o[0], o[1]);
+          if (d) extend(d[0], d[1]);
+          const cur = resolveDisplayPosition(selected);
+          if (cur) extend(cur[0], cur[1]);
+        }
         if (selectedBounds.isValid()) {
           targetBounds = selectedBounds;
         }

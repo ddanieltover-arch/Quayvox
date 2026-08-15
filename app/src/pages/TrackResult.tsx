@@ -5,6 +5,7 @@ import { getStatusColor } from '@/data/mockShipments';
 import { ShipmentMap, shipmentHasMapGeo } from '@/components/tracking/ShipmentMap';
 import { ShipmentDetailsDialog } from '@/components/tracking/ShipmentDetailsDialog';
 import { useTrackPolling } from '@/hooks/useTrackPolling';
+import { mapStopsFromEvents } from '@/lib/shipments';
 
 const TrackResult = () => {
   const { trackingNumber = '' } = useParams();
@@ -42,6 +43,7 @@ const TrackResult = () => {
         currentLng: shipment.currentLng,
         currentAddress: shipment.currentAddress,
         positions,
+        stops: mapStopsFromEvents(events),
       }
     : null;
 
