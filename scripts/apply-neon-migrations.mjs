@@ -39,6 +39,13 @@ const migrations = [
 
 await client.connect();
 for (const file of migrations) {
+  if (file === '002_seed_shipments.sql') {
+    const existing = await client.query('select count(*)::int as n from public.shipments');
+    if (existing.rows[0].n > 0) {
+      console.log(`skipped neon/migrations/${file} (keeping ${existing.rows[0].n} live shipments)`);
+      continue;
+    }
+  }
   const path = join(root, 'neon/migrations', file);
   await client.query(readFileSync(path, 'utf8'));
   console.log(`applied neon/migrations/${file}`);

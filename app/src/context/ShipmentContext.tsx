@@ -176,6 +176,7 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             customerSent?: boolean;
             adminSent?: boolean;
             partyEmails?: string[];
+            failures?: Array<{ to: string; error: string }>;
           };
         };
         if (!res.ok || !data.shipment) {
@@ -204,6 +205,12 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
 
         const partyCount = data.emails?.partyEmails?.length ?? 0;
+        const failures = data.emails?.failures ?? [];
+        if (failures.length) {
+          toast.error(
+            `Email not delivered to ${failures.map((f) => f.to).join(', ')}. ${failures[0].error}`
+          );
+        }
         if (data.emails?.customerSent || data.emails?.adminSent) {
           const parts: string[] = [];
           if (data.emails.customerSent) {

@@ -12,8 +12,8 @@ import type { ContactEmailData, ShipmentEmailContext } from '../../emails/types'
 import { adminNotifyEmail, sendEmailSafe } from './mail';
 import {
   buildContexts,
+  collectPartyEmails,
   detectShipmentChanges,
-  getPartyNotificationEmails,
   rowToShipmentEmailData,
   shouldNotifyAdmin,
   shouldNotifyCustomer,
@@ -54,7 +54,10 @@ export async function sendShipmentCreatedEmails(
 ): Promise<{ customerSent: boolean; adminSent: boolean }> {
   const shipment = rowToShipmentEmailData(row);
   const ctx: ShipmentEmailContext = { shipment, kind: 'created' };
-  return dispatchShipmentContexts([ctx], { notifyCustomer: true });
+  return dispatchShipmentContexts([ctx], {
+    notifyCustomer: true,
+    partyEmails: collectPartyEmails(row, shipment),
+  });
 }
 
 export async function sendShipmentUpdateEmails(
@@ -73,6 +76,7 @@ export async function sendShipmentUpdateEmails(
   contexts: number;
   partyEmails: string[];
   adminEmail: string | null;
+  failures: Array<{ to: string; error: string }>;
 }> {
   const shipment = rowToShipmentEmailData(after, { positionLabel: options.positionLabel });
   const fallbackMessage =
@@ -89,13 +93,18 @@ export async function sendShipmentUpdateEmails(
     options.eventLocation
   );
 
-  const partyEmails = getPartyNotificationEmails(shipment);
+  const partyEmails = collectPartyEmails(before, after, shipment);
   const admin = adminNotifyEmail();
 
   if (!partyEmails.length) {
     console.warn(
       'shipment update emails: no sender/receiver emails on file',
-      shipment.trackingNumber
+      shipment.trackingNumber,
+      {
+        sender: after.sender_email ?? before.sender_email,
+        receiver: after.receiver_email ?? before.receiver_email,
+        customer: after.customer_email ?? before.customer_email,
+      }
     );
   }
   if (!admin) {
@@ -104,6 +113,7 @@ export async function sendShipmentUpdateEmails(
 
   const result = await dispatchShipmentContexts(contexts, {
     notifyCustomer: options.notifyCustomer ?? true,
+    partyEmails,
   });
 
   return {
@@ -116,17 +126,22 @@ export async function sendShipmentUpdateEmails(
 
 async function dispatchShipmentContexts(
   contexts: ShipmentEmailContext[],
-  options: { notifyCustomer: boolean }
-): Promise<{ customerSent: boolean; adminSent: boolean }> {
+  options: { notifyCustomer: boolean; partyEmails?: string[] }
+): Promise<{
+  customerSent: boolean;
+  adminSent: boolean;
+  failures: Array<{ to: string; error: string }>;
+}> {
   const admin = adminNotifyEmail();
   let customerSent = false;
   let adminSent = false;
+  const failures: Array<{ to: string; error: string }> = [];
 
   for (const ctx of contexts) {
-    const partyEmails = getPartyNotificationEmails(ctx.shipment);
-
-    for (const email of partyEmails) {
-      if (shouldNotifyCustomer(ctx, options.notifyCustomer, email)) {
+    const partyEmails = options.partyEmails ?? collectPartyEmails(ctx.shipment);
+    const partyJobs = partyEmails
+      .filter((email) => shouldNotifyCustomer(ctx, options.notifyCustomer, email))
+      .map(async (email) => {
         const result = await sendEmailSafe(
           {
             to: email,
@@ -135,9 +150,21 @@ async function dispatchShipmentContexts(
           },
           { template: `customer/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
         );
-        if (result.emailSent) customerSent = true;
-      }
-    }
+        if (result.emailSent) {
+          customerSent = true;
+          return;
+        }
+        const error = result.error || 'Email was not sent';
+        console.error('party shipment email failed', {
+          to: email,
+          trackingNumber: ctx.shipment.trackingNumber,
+          kind: ctx.kind,
+          error,
+        });
+        failures.push({ to: email, error });
+      });
+
+    await Promise.all(partyJobs);
 
     if (shouldNotifyAdmin(ctx) && admin) {
       const result = await sendEmailSafe(
@@ -148,11 +175,22 @@ async function dispatchShipmentContexts(
         },
         { template: `admin/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
       );
-      if (result.emailSent) adminSent = true;
+      if (result.emailSent) {
+        adminSent = true;
+      } else {
+        const error = result.error || 'Email was not sent';
+        console.error('admin shipment email failed', {
+          to: admin,
+          trackingNumber: ctx.shipment.trackingNumber,
+          kind: ctx.kind,
+          error,
+        });
+        failures.push({ to: admin, error });
+      }
     }
   }
 
-  return { customerSent, adminSent };
+  return { customerSent, adminSent, failures };
 }
 
 export type { ShipmentChangeSet };

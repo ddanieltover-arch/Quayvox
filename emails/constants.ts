@@ -116,6 +116,18 @@ export function toneForStatus(status: ShipmentStatus): EmailTone {
   }
 }
 
+export function copyForStatus(
+  table: Record<ShipmentStatus, { headline: string; body: string }>,
+  status: string
+): { headline: string; body: string } {
+  const row = table[status as ShipmentStatus];
+  if (row) return row;
+  return {
+    headline: `Shipment is now ${status}`,
+    body: `This shipment status was updated to ${status}.`,
+  };
+}
+
 export const CUSTOMER_STATUS_COPY: Record<ShipmentStatus, { headline: string; body: string }> = {
   Pending: {
     headline: 'Your booking is confirmed',

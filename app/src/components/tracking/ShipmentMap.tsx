@@ -190,24 +190,35 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function createMarkerIcon(kind: 'origin' | 'destination' | 'current', selected: boolean): L.DivIcon {
+function createMarkerIcon(
+  kind: 'origin' | 'destination' | 'current',
+  selected: boolean,
+  onHold = false
+): L.DivIcon {
+  const holdCurrent = kind === 'current' && onHold;
   const classes = [
     'qv-map-marker',
-    kind === 'current'
-      ? 'qv-map-marker--current'
-      : kind === 'origin'
-        ? 'qv-map-marker--origin'
-        : 'qv-map-marker--destination',
+    holdCurrent
+      ? 'qv-map-marker--hold'
+      : kind === 'current'
+        ? 'qv-map-marker--current'
+        : kind === 'origin'
+          ? 'qv-map-marker--origin'
+          : 'qv-map-marker--destination',
     selected ? 'qv-map-marker--selected' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
+  const html = holdCurrent
+    ? `<button type="button" class="${classes}" aria-label="On hold"><span class="qv-map-marker__bang">!</span></button>`
+    : `<button type="button" class="${classes}" aria-hidden="true"></button>`;
+
   return L.divIcon({
     className: '',
-    html: `<button type="button" class="${classes}" aria-hidden="true"></button>`,
-    iconSize: kind === 'current' ? [16, 16] : [12, 12],
-    iconAnchor: kind === 'current' ? [8, 8] : [6, 6],
+    html,
+    iconSize: kind === 'current' ? (holdCurrent ? [22, 22] : [16, 16]) : [12, 12],
+    iconAnchor: kind === 'current' ? (holdCurrent ? [11, 11] : [8, 8]) : [6, 6],
   });
 }
 
@@ -524,7 +535,7 @@ export function ShipmentMap({
       if (route.length >= 2) {
         const isFlowTarget = flowId != null && s.id === flowId;
         const line = L.polyline(route, {
-          color: '#4F6DF5',
+          color: s.status === 'On Hold' ? '#EF4444' : '#4F6DF5',
           weight: isFlowTarget ? 3 : 2.5,
           opacity: multi && flowId && !isFlowTarget ? 0.45 : 0.85,
           className: 'qv-map-route',
@@ -561,13 +572,19 @@ export function ShipmentMap({
           }
         }
 
+        const isOnHold = s.status === 'On Hold';
         const marker = L.marker([startLat, startLng], {
-          icon: createMarkerIcon(kind, s.id === selectedId),
+          icon: createMarkerIcon(kind, s.id === selectedId, isOnHold),
           keyboard: false,
+          zIndexOffset: kind === 'current' && isOnHold ? 600 : kind === 'current' ? 400 : 0,
         })
           .bindPopup(
             `<div style="font:12px/1.4 system-ui,sans-serif;color:#0B1020">
-              <strong>${escapeHtml(s.trackingNumber)}</strong><br/>${escapeHtml(label)}<br/>${escapeHtml(s.status)}
+              <strong>${escapeHtml(s.trackingNumber)}</strong><br/>${escapeHtml(label)}<br/>${
+                isOnHold && kind === 'current'
+                  ? '<span style="color:#DC2626;font-weight:700">On Hold — action required</span>'
+                  : escapeHtml(s.status)
+              }
             </div>`
           )
           .addTo(map);
@@ -768,6 +785,22 @@ export function ShipmentMap({
           box-shadow: 0 0 0 4px rgba(79, 109, 245, 0.35);
           animation: qv-map-marker-pulse 2.2s ease-out infinite;
         }
+        .qv-map-marker--hold {
+          width: 22px;
+          height: 22px;
+          background: #DC2626;
+          border: 2px solid #FEE2E2;
+          box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.4);
+          animation: qv-map-marker-hold-pulse 1.4s ease-out infinite;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .qv-map-marker__bang {
+          color: #fff;
+          font: 800 13px/1 system-ui, sans-serif;
+          pointer-events: none;
+        }
         .qv-map-marker--selected {
           outline: 2px solid #fff;
           outline-offset: 2px;
@@ -783,6 +816,17 @@ export function ShipmentMap({
             box-shadow: 0 0 0 3px rgba(79, 109, 245, 0);
           }
         }
+        @keyframes qv-map-marker-hold-pulse {
+          0% {
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.55);
+          }
+          70% {
+            box-shadow: 0 0 0 16px rgba(220, 38, 38, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0);
+          }
+        }
         @keyframes qv-map-route-flow {
           to {
             stroke-dashoffset: calc(var(--qv-flow-cycle, 20px) * -1);
@@ -795,6 +839,10 @@ export function ShipmentMap({
           .qv-map-marker--current {
             animation: none;
             box-shadow: 0 0 0 4px rgba(79, 109, 245, 0.35);
+          }
+          .qv-map-marker--hold {
+            animation: none;
+            box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.45);
           }
           .qv-map-route--flow {
             animation: none;

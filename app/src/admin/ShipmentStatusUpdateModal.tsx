@@ -69,6 +69,9 @@ export function ShipmentStatusUpdateModal({
         progress: form.progress,
         eta: form.eta || '',
         currentAddress: nextAddress || null,
+        senderEmail: shipment.senderEmail || null,
+        receiverEmail: shipment.receiverEmail || shipment.customerEmail || null,
+        customerEmail: shipment.customerEmail || shipment.receiverEmail || null,
       },
       {
         eventMessage:

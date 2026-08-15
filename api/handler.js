@@ -57,6 +57,14 @@ function toneForStatus(status) {
       return "default";
   }
 }
+function copyForStatus(table, status) {
+  const row = table[status];
+  if (row) return row;
+  return {
+    headline: `Shipment is now ${status}`,
+    body: `This shipment status was updated to ${status}.`
+  };
+}
 var BRAND, FONTS, CONTACT, BRANCHES, BRANCHES_LINE, TONE_ACCENT, STATUS_COLORS, STATUS_COLORS_ON_DARK, CUSTOMER_STATUS_COPY, ADMIN_STATUS_COPY;
 var init_constants = __esm({
   "emails/constants.ts"() {
@@ -1345,7 +1353,7 @@ function headlineForCustomer(ctx) {
     case "timeline":
       return "A new milestone was added";
     case "status":
-      return CUSTOMER_STATUS_COPY[ctx.shipment.status].headline;
+      return copyForStatus(CUSTOMER_STATUS_COPY, ctx.shipment.status).headline;
     default:
       return "Your shipment was updated";
   }
@@ -1363,7 +1371,7 @@ function bodyForCustomer(ctx) {
     case "timeline":
       return ctx.eventMessage || "A new event was added to your shipment timeline.";
     case "status":
-      return CUSTOMER_STATUS_COPY[ctx.shipment.status].body;
+      return copyForStatus(CUSTOMER_STATUS_COPY, ctx.shipment.status).body;
     default:
       return "View the latest details on your track page.";
   }
@@ -1395,7 +1403,7 @@ function headlineForAdmin(ctx) {
     case "timeline":
       return "A timeline event was logged";
     case "status":
-      return ADMIN_STATUS_COPY[ctx.shipment.status].headline;
+      return copyForStatus(ADMIN_STATUS_COPY, ctx.shipment.status).headline;
     default:
       return "Shipment updated";
   }
@@ -1415,7 +1423,7 @@ function bodyForAdmin(ctx) {
       return ctx.eventMessage || "A timeline event was recorded.";
     case "status": {
       const prev = ctx.previousStatus ? `Previous status: ${ctx.previousStatus}. ` : "";
-      return `${prev}${ADMIN_STATUS_COPY[ctx.shipment.status].body}`;
+      return `${prev}${copyForStatus(ADMIN_STATUS_COPY, ctx.shipment.status).body}`;
     }
     default:
       return "Open admin to review this shipment.";
@@ -1670,7 +1678,7 @@ function rowToShipmentEmailData(row, extras) {
   return {
     id: String(row.id),
     trackingNumber: String(row.tracking_number),
-    status: row.status,
+    status: String(row.status ?? "").trim(),
     origin: String(row.origin),
     destination: String(row.destination),
     carrier: String(row.carrier),
@@ -1774,18 +1782,28 @@ function buildContexts(shipment, changes, eventMessage, eventLocation) {
   return contexts;
 }
 var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-function getPartyNotificationEmails(shipment) {
+function pushEmail(out, seen, raw) {
+  const email = typeof raw === "string" ? raw.trim() : "";
+  if (!email || !EMAIL_RE.test(email)) return;
+  const key = email.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push(email);
+}
+function collectPartyEmails(...sources) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const raw of [shipment.senderEmail, shipment.receiverEmail, shipment.customerEmail]) {
-    const email = raw?.trim();
-    if (!email || !EMAIL_RE.test(email)) continue;
-    const key = email.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(email);
+  for (const source of sources) {
+    if (!source) continue;
+    const rec = source;
+    pushEmail(out, seen, rec.senderEmail ?? rec.sender_email);
+    pushEmail(out, seen, rec.receiverEmail ?? rec.receiver_email);
+    pushEmail(out, seen, rec.customerEmail ?? rec.customer_email);
   }
   return out;
+}
+function getPartyNotificationEmails(shipment) {
+  return collectPartyEmails(shipment);
 }
 function shouldNotifyCustomer(_ctx, notifyCustomer, _customerEmail) {
   return notifyCustomer !== false;
@@ -1820,7 +1838,10 @@ async function sendContactEmails(data) {
 async function sendShipmentCreatedEmails(row) {
   const shipment = rowToShipmentEmailData(row);
   const ctx = { shipment, kind: "created" };
-  return dispatchShipmentContexts([ctx], { notifyCustomer: true });
+  return dispatchShipmentContexts([ctx], {
+    notifyCustomer: true,
+    partyEmails: collectPartyEmails(row, shipment)
+  });
 }
 async function sendShipmentUpdateEmails(before, after, patch, options = {}) {
   const shipment = rowToShipmentEmailData(after, { positionLabel: options.positionLabel });
@@ -1832,19 +1853,25 @@ async function sendShipmentUpdateEmails(before, after, patch, options = {}) {
     fallbackMessage,
     options.eventLocation
   );
-  const partyEmails = getPartyNotificationEmails(shipment);
+  const partyEmails = collectPartyEmails(before, after, shipment);
   const admin = adminNotifyEmail();
   if (!partyEmails.length) {
     console.warn(
       "shipment update emails: no sender/receiver emails on file",
-      shipment.trackingNumber
+      shipment.trackingNumber,
+      {
+        sender: after.sender_email ?? before.sender_email,
+        receiver: after.receiver_email ?? before.receiver_email,
+        customer: after.customer_email ?? before.customer_email
+      }
     );
   }
   if (!admin) {
     console.warn("shipment update emails: ADMIN_EMAIL / CONTACT_TO_EMAIL not configured");
   }
   const result = await dispatchShipmentContexts(contexts, {
-    notifyCustomer: options.notifyCustomer ?? true
+    notifyCustomer: options.notifyCustomer ?? true,
+    partyEmails
   });
   return {
     ...result,
@@ -1857,21 +1884,32 @@ async function dispatchShipmentContexts(contexts, options) {
   const admin = adminNotifyEmail();
   let customerSent = false;
   let adminSent = false;
+  const failures = [];
   for (const ctx of contexts) {
-    const partyEmails = getPartyNotificationEmails(ctx.shipment);
-    for (const email of partyEmails) {
-      if (shouldNotifyCustomer(ctx, options.notifyCustomer, email)) {
-        const result = await sendEmailSafe(
-          {
-            to: email,
-            subject: customerShipmentSubject(ctx),
-            react: CustomerShipmentEmail({ ctx })
-          },
-          { template: `customer/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
-        );
-        if (result.emailSent) customerSent = true;
+    const partyEmails = options.partyEmails ?? collectPartyEmails(ctx.shipment);
+    const partyJobs = partyEmails.filter((email) => shouldNotifyCustomer(ctx, options.notifyCustomer, email)).map(async (email) => {
+      const result = await sendEmailSafe(
+        {
+          to: email,
+          subject: customerShipmentSubject(ctx),
+          react: CustomerShipmentEmail({ ctx })
+        },
+        { template: `customer/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
+      );
+      if (result.emailSent) {
+        customerSent = true;
+        return;
       }
-    }
+      const error = result.error || "Email was not sent";
+      console.error("party shipment email failed", {
+        to: email,
+        trackingNumber: ctx.shipment.trackingNumber,
+        kind: ctx.kind,
+        error
+      });
+      failures.push({ to: email, error });
+    });
+    await Promise.all(partyJobs);
     if (shouldNotifyAdmin(ctx) && admin) {
       const result = await sendEmailSafe(
         {
@@ -1881,10 +1919,21 @@ async function dispatchShipmentContexts(contexts, options) {
         },
         { template: `admin/${ctx.kind}`, trackingNumber: ctx.shipment.trackingNumber }
       );
-      if (result.emailSent) adminSent = true;
+      if (result.emailSent) {
+        adminSent = true;
+      } else {
+        const error = result.error || "Email was not sent";
+        console.error("admin shipment email failed", {
+          to: admin,
+          trackingNumber: ctx.shipment.trackingNumber,
+          kind: ctx.kind,
+          error
+        });
+        failures.push({ to: admin, error });
+      }
     }
   }
-  return { customerSent, adminSent };
+  return { customerSent, adminSent, failures };
 }
 
 // api/_lib/geoPorts.ts
@@ -2892,7 +2941,8 @@ async function handleShipmentById(req, res, id) {
           adminSent: emailResult.adminSent,
           contexts: emailResult.contexts,
           partyEmails: emailResult.partyEmails,
-          adminEmail: emailResult.adminEmail
+          adminEmail: emailResult.adminEmail,
+          failures: emailResult.failures
         }
       });
     } catch (err) {

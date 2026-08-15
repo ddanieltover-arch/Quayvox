@@ -4,6 +4,7 @@ import {
   BRAND,
   CONTACT,
   CUSTOMER_STATUS_COPY,
+  copyForStatus,
   FONTS,
   adminShipmentUrl,
   toneForStatus,
@@ -47,7 +48,7 @@ function headlineForCustomer(ctx: ShipmentEmailContext): string {
     case 'timeline':
       return 'A new milestone was added';
     case 'status':
-      return CUSTOMER_STATUS_COPY[ctx.shipment.status].headline;
+      return copyForStatus(CUSTOMER_STATUS_COPY, ctx.shipment.status).headline;
     default:
       return 'Your shipment was updated';
   }
@@ -68,7 +69,7 @@ function bodyForCustomer(ctx: ShipmentEmailContext): string {
     case 'timeline':
       return ctx.eventMessage || 'A new event was added to your shipment timeline.';
     case 'status':
-      return CUSTOMER_STATUS_COPY[ctx.shipment.status].body;
+      return copyForStatus(CUSTOMER_STATUS_COPY, ctx.shipment.status).body;
     default:
       return 'View the latest details on your track page.';
   }
@@ -102,7 +103,7 @@ function headlineForAdmin(ctx: ShipmentEmailContext): string {
     case 'timeline':
       return 'A timeline event was logged';
     case 'status':
-      return ADMIN_STATUS_COPY[ctx.shipment.status].headline;
+      return copyForStatus(ADMIN_STATUS_COPY, ctx.shipment.status).headline;
     default:
       return 'Shipment updated';
   }
@@ -126,7 +127,7 @@ function bodyForAdmin(ctx: ShipmentEmailContext): string {
       return ctx.eventMessage || 'A timeline event was recorded.';
     case 'status': {
       const prev = ctx.previousStatus ? `Previous status: ${ctx.previousStatus}. ` : '';
-      return `${prev}${ADMIN_STATUS_COPY[ctx.shipment.status].body}`;
+      return `${prev}${copyForStatus(ADMIN_STATUS_COPY, ctx.shipment.status).body}`;
     }
     default:
       return 'Open admin to review this shipment.';

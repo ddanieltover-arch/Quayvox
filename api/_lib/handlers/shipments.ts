@@ -313,6 +313,7 @@ export async function handleShipmentById(
           contexts: emailResult.contexts,
           partyEmails: emailResult.partyEmails,
           adminEmail: emailResult.adminEmail,
+          failures: emailResult.failures,
         },
       });
     } catch (err) {

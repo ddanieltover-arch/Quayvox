@@ -1,4 +1,11 @@
--- Seed demo shipments + timeline events (stable IDs for QA)
+-- Demo seed for empty databases only.
+-- Never restore shipments an admin has already deleted.
+
+do $seed$
+begin
+  if exists (select 1 from public.shipments) then
+    return;
+  end if;
 
 insert into public.shipments (
   id, tracking_number, origin, destination, carrier, status, weight,
@@ -146,3 +153,6 @@ values
   ('b1000001-0000-4000-8000-000000000041', 'a1000001-0000-4000-8000-000000000006', 'In Transit', 'Mumbai Port', 'Vessel departed', '2026-05-12T18:00:00Z'),
   ('b1000001-0000-4000-8000-000000000042', 'a1000001-0000-4000-8000-000000000006', 'Exception', 'Mombasa approach', 'Delay due to port congestion — ETA revised', '2026-05-28T09:00:00Z')
 on conflict (id) do nothing;
+
+end
+$seed$;

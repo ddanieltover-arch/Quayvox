@@ -21,7 +21,7 @@ export function rowToShipmentEmailData(
   return {
     id: String(row.id),
     trackingNumber: String(row.tracking_number),
-    status: row.status as ShipmentStatus,
+    status: String(row.status ?? '').trim() as ShipmentStatus,
     origin: String(row.origin),
     destination: String(row.destination),
     carrier: String(row.carrier),
@@ -177,19 +177,34 @@ export function buildContexts(
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Unique sender + receiver (+ legacy customer) emails for party notifications. */
-export function getPartyNotificationEmails(shipment: ShipmentEmailData): string[] {
+function pushEmail(out: string[], seen: Set<string>, raw: unknown) {
+  const email = typeof raw === 'string' ? raw.trim() : '';
+  if (!email || !EMAIL_RE.test(email)) return;
+  const key = email.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push(email);
+}
+
+/** Unique sender + receiver (+ legacy customer) emails from one or more shipment records. */
+export function collectPartyEmails(
+  ...sources: Array<Record<string, unknown> | ShipmentEmailData | null | undefined>
+): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const raw of [shipment.senderEmail, shipment.receiverEmail, shipment.customerEmail]) {
-    const email = raw?.trim();
-    if (!email || !EMAIL_RE.test(email)) continue;
-    const key = email.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(email);
+  for (const source of sources) {
+    if (!source) continue;
+    const rec = source as Record<string, unknown>;
+    pushEmail(out, seen, rec.senderEmail ?? rec.sender_email);
+    pushEmail(out, seen, rec.receiverEmail ?? rec.receiver_email);
+    pushEmail(out, seen, rec.customerEmail ?? rec.customer_email);
   }
   return out;
+}
+
+/** Unique sender + receiver (+ legacy customer) emails for party notifications. */
+export function getPartyNotificationEmails(shipment: ShipmentEmailData): string[] {
+  return collectPartyEmails(shipment);
 }
 
 export function shouldNotifyCustomer(
