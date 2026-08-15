@@ -325,7 +325,8 @@ async function resolveShipmentGeo(s: MapShipmentGeo): Promise<MapShipmentGeo> {
 
   if (next.stops?.length) {
     const resolvedStops: MapStopGeo[] = [];
-    for (const stop of next.stops) {
+    const tail = next.stops.slice(-2);
+    for (const stop of tail) {
       if (isValidCoord(stop.lat, stop.lng) || !stopLabel(stop)) {
         resolvedStops.push(stop);
         continue;
@@ -341,32 +342,47 @@ async function resolveShipmentGeo(s: MapShipmentGeo): Promise<MapShipmentGeo> {
   return next;
 }
 
-function buildRouteLatLngs(s: MapShipmentGeo): L.LatLngExpression[] {
+function latestStopPair(s: MapShipmentGeo): Array<{
+  lat: number;
+  lng: number;
+  label: string;
+  status?: string | null;
+  message?: string | null;
+}> {
   const eventStops = uniqueGeocodedStops(s);
-  if (eventStops.length >= 2) {
-    return eventStops.map((stop) => [stop.lat, stop.lng]);
+  if (eventStops.length > 0) {
+    return eventStops.slice(-2);
   }
 
-  const coords: L.LatLngExpression[] = [];
-  const origin = resolveOriginCoord(s);
-  const destination = resolveDestinationCoord(s);
+  const ordered: Array<{ lat: number; lng: number; label: string }> = [];
+  const pushUnique = (lat: number, lng: number, label: string) => {
+    const last = ordered[ordered.length - 1];
+    if (last && coordsClose(last.lat, last.lng, lat, lng)) {
+      last.label = label || last.label;
+      return;
+    }
+    ordered.push({ lat, lng, label });
+  };
 
-  if (origin) coords.push([origin[0], origin[1]]);
+  const origin = resolveOriginCoord(s);
+  if (origin) pushUnique(origin[0], origin[1], 'Previous location');
   const trail = (s.positions ?? []).filter((p) => isValidCoord(p.lat, p.lng));
-  for (const p of trail) {
-    coords.push([p.lat, p.lng]);
+  for (const point of trail) {
+    pushUnique(point.lat, point.lng, point.label?.trim() || 'Previous location');
   }
   const current = resolveDisplayPosition(s);
-  if (current && trail.length === 0) {
-    coords.push([current[0], current[1]]);
-  } else if (current && trail.length > 0) {
-    const last = trail[trail.length - 1];
-    if (last.lat !== current[0] || last.lng !== current[1]) {
-      coords.push([current[0], current[1]]);
-    }
+  if (current) {
+    pushUnique(
+      current[0],
+      current[1],
+      s.currentAddress?.trim() ? `Latest update — ${s.currentAddress.trim()}` : 'Latest update'
+    );
   }
-  if (destination) coords.push([destination[0], destination[1]]);
-  return coords;
+  return ordered.slice(-2);
+}
+
+function buildRouteLatLngs(s: MapShipmentGeo): L.LatLngExpression[] {
+  return latestStopPair(s).map((stop) => [stop.lat, stop.lng]);
 }
 
 function toRad(deg: number): number {
@@ -927,50 +943,24 @@ export function ShipmentMap({
         bounds.extend([lat, lng]);
       };
 
-      const origin = resolveOriginCoord(s);
-      const destination = resolveDestinationCoord(s);
-      const eventStops = uniqueGeocodedStops(s);
-
-      if (eventStops.length >= 2) {
-        eventStops.forEach((stop, index) => {
-          const isLatest = index === eventStops.length - 1;
-          addMarker(
-            stop.lat,
-            stop.lng,
-            isLatest ? 'current' : 'history',
-            isLatest ? `Latest update — ${stop.label}` : stop.label,
-            stop.status,
-            stop.message
-          );
-          if (isLatest) {
-            seenCurrentIds.add(s.id);
-            prevCurrentPositionsRef.current.set(s.id, [stop.lat, stop.lng]);
-          }
-        });
-      } else {
-        if (origin) addMarker(origin[0], origin[1], 'origin', 'Origin');
-        if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
-        const current = resolveDisplayPosition(s);
-        const trail = (s.positions ?? []).filter((p) => isValidCoord(p.lat, p.lng));
-        for (const point of trail) {
-          const sameAsCurrent =
-            current != null && coordsClose(point.lat, point.lng, current[0], current[1]);
-          if (sameAsCurrent) continue;
-          addMarker(point.lat, point.lng, 'history', point.label?.trim() || 'Previous location');
-        }
-        if (current) {
+      const pair = latestStopPair(s);
+      pair.forEach((stop, index) => {
+        const isLatest = index === pair.length - 1;
+        addMarker(
+          stop.lat,
+          stop.lng,
+          isLatest ? 'current' : 'history',
+          isLatest && !stop.label.startsWith('Latest update')
+            ? `Latest update — ${stop.label}`
+            : stop.label,
+          stop.status,
+          stop.message
+        );
+        if (isLatest) {
           seenCurrentIds.add(s.id);
-          addMarker(
-            current[0],
-            current[1],
-            'current',
-            s.currentAddress?.trim()
-              ? `Latest update — ${s.currentAddress.trim()}`
-              : 'Latest update'
-          );
-          prevCurrentPositionsRef.current.set(s.id, [current[0], current[1]]);
+          prevCurrentPositionsRef.current.set(s.id, [stop.lat, stop.lng]);
         }
-      }
+      });
     }
 
     // Drop stale position memory for shipments no longer on the map.
@@ -1016,14 +1006,10 @@ export function ShipmentMap({
         const extend = (lat: number, lng: number) => {
           selectedBounds.extend([lat, lng]);
         };
-        const o = resolveOriginCoord(selected);
-        const d = resolveDestinationCoord(selected);
-        const stops = uniqueGeocodedStops(selected);
-        if (stops.length >= 2) {
-          for (const stop of stops) extend(stop.lat, stop.lng);
+        const pair = latestStopPair(selected);
+        if (pair.length > 0) {
+          for (const stop of pair) extend(stop.lat, stop.lng);
         } else {
-          if (o) extend(o[0], o[1]);
-          if (d) extend(d[0], d[1]);
           const cur = resolveDisplayPosition(selected);
           if (cur) extend(cur[0], cur[1]);
         }
