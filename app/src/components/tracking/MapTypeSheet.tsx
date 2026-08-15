@@ -1,4 +1,6 @@
-import { MAP_BASEMAPS, MAP_BASEMAP_IDS, type MapBasemapId } from '@/lib/mapConfig';
+import { useEffect, useState } from 'react';
+import { Layers } from 'lucide-react';
+import { isMapBasemapId, MAP_BASEMAPS, MAP_BASEMAP_IDS, type MapBasemapId } from '@/lib/mapConfig';
 import {
   Sheet,
   SheetContent,
@@ -7,6 +9,102 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+
+const MAP_TYPE_KEY = 'qv-live-map-type';
+const MAP_LABELS_KEY = 'qv-live-map-labels';
+const MAP_PORTS_KEY = 'qv-live-map-ports';
+
+function readStoredBasemap(): MapBasemapId {
+  try {
+    const value = localStorage.getItem(MAP_TYPE_KEY);
+    return isMapBasemapId(value) ? value : 'default';
+  } catch {
+    return 'default';
+  }
+}
+
+function readStoredFlag(key: string, fallback: boolean): boolean {
+  try {
+    const value = localStorage.getItem(key);
+    if (value === '1') return true;
+    if (value === '0') return false;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function useMapLayerPrefs(defaultShowPorts = false) {
+  const [mapType, setMapType] = useState<MapBasemapId>(readStoredBasemap);
+  const [satelliteLabels, setSatelliteLabels] = useState(() => readStoredFlag(MAP_LABELS_KEY, false));
+  const [showPorts, setShowPorts] = useState(() => readStoredFlag(MAP_PORTS_KEY, defaultShowPorts));
+  const [layersOpen, setLayersOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MAP_TYPE_KEY, mapType);
+      localStorage.setItem(MAP_LABELS_KEY, satelliteLabels ? '1' : '0');
+      localStorage.setItem(MAP_PORTS_KEY, showPorts ? '1' : '0');
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [mapType, satelliteLabels, showPorts]);
+
+  return {
+    mapType,
+    setMapType,
+    satelliteLabels,
+    setSatelliteLabels,
+    showPorts,
+    setShowPorts,
+    layersOpen,
+    setLayersOpen,
+  };
+}
+
+export function MapLayersControl({
+  mapType,
+  onMapTypeChange,
+  satelliteLabels,
+  onSatelliteLabelsChange,
+  showPorts,
+  onShowPortsChange,
+  layersOpen,
+  onLayersOpenChange,
+}: {
+  mapType: MapBasemapId;
+  onMapTypeChange: (id: MapBasemapId) => void;
+  satelliteLabels: boolean;
+  onSatelliteLabelsChange: (value: boolean) => void;
+  showPorts: boolean;
+  onShowPortsChange: (value: boolean) => void;
+  layersOpen: boolean;
+  onLayersOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onLayersOpenChange(true)}
+        className="absolute top-3 right-3 z-[1000] flex min-h-11 items-center gap-2 rounded-xl border border-white/20 bg-navy-800 px-3 text-sm font-medium text-text-primary shadow-lg hover:border-cobalt/50"
+        aria-label="Map type and layers"
+      >
+        <Layers className="w-4 h-4 text-cobalt" />
+        Map type
+      </button>
+      <MapTypeSheet
+        open={layersOpen}
+        onOpenChange={onLayersOpenChange}
+        mapType={mapType}
+        onMapTypeChange={onMapTypeChange}
+        satelliteLabels={satelliteLabels}
+        onSatelliteLabelsChange={onSatelliteLabelsChange}
+        showPorts={showPorts}
+        onShowPortsChange={onShowPortsChange}
+      />
+    </>
+  );
+}
 
 const PREVIEW: Record<MapBasemapId, string> = {
   default:

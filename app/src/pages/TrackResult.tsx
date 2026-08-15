@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MapPin, Package, Clock, Search } from 'lucide-react';
 import { getStatusColor } from '@/data/mockShipments';
 import { ShipmentMap, shipmentHasMapGeo } from '@/components/tracking/ShipmentMap';
+import { MapLayersControl, useMapLayerPrefs } from '@/components/tracking/MapTypeSheet';
 import { ShipmentDetailsDialog } from '@/components/tracking/ShipmentDetailsDialog';
 import { useTrackPolling } from '@/hooks/useTrackPolling';
 import { mapStopsFromEvents } from '@/lib/shipments';
@@ -11,6 +12,16 @@ const TrackResult = () => {
   const { trackingNumber = '' } = useParams();
   const navigate = useNavigate();
   const [query, setQuery] = useState(trackingNumber);
+  const {
+    mapType,
+    setMapType,
+    satelliteLabels,
+    setSatelliteLabels,
+    showPorts,
+    setShowPorts,
+    layersOpen,
+    setLayersOpen,
+  } = useMapLayerPrefs(false);
 
   useEffect(() => {
     setQuery(trackingNumber);
@@ -181,10 +192,25 @@ const TrackResult = () => {
               )}
             </div>
             {hasMapGeo && mapShipment ? (
-              <ShipmentMap
-                shipments={[mapShipment]}
-                className="h-64 sm:h-80 mx-5 sm:mx-6 mb-5 sm:mb-6"
-              />
+              <div className="relative mx-5 sm:mx-6 mb-5 sm:mb-6">
+                <ShipmentMap
+                  shipments={[mapShipment]}
+                  showPorts={showPorts}
+                  basemap={mapType}
+                  satelliteLabels={satelliteLabels}
+                  className="h-64 sm:h-80"
+                />
+                <MapLayersControl
+                  mapType={mapType}
+                  onMapTypeChange={setMapType}
+                  satelliteLabels={satelliteLabels}
+                  onSatelliteLabelsChange={setSatelliteLabels}
+                  showPorts={showPorts}
+                  onShowPortsChange={setShowPorts}
+                  layersOpen={layersOpen}
+                  onLayersOpenChange={setLayersOpen}
+                />
+              </div>
             ) : (
               <p className="px-5 sm:px-6 pb-5 text-sm text-text-secondary">
                 Map appears once the shipment has a locatable origin, destination, or current address.

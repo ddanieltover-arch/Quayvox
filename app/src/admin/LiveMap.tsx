@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Layers, MapPin, RefreshCw } from 'lucide-react';
+import { MapPin, RefreshCw } from 'lucide-react';
 import { useShipments } from '@/context/ShipmentContext';
 import { getStatusColor } from '@/data/mockShipments';
 import {
@@ -7,8 +7,7 @@ import {
   resolveDisplayPosition,
   type MapShipmentGeo,
 } from '@/components/tracking/ShipmentMap';
-import { MapTypeSheet } from '@/components/tracking/MapTypeSheet';
-import { isMapBasemapId, type MapBasemapId } from '@/lib/mapConfig';
+import { MapLayersControl, useMapLayerPrefs } from '@/components/tracking/MapTypeSheet';
 import {
   mapPositionRow,
   mapEventRow,
@@ -18,50 +17,22 @@ import {
   type ShipmentPositionRow,
 } from '@/lib/shipments';
 
-const MAP_TYPE_KEY = 'qv-live-map-type';
-const MAP_LABELS_KEY = 'qv-live-map-labels';
-const MAP_PORTS_KEY = 'qv-live-map-ports';
-
-function readStoredBasemap(): MapBasemapId {
-  try {
-    const value = localStorage.getItem(MAP_TYPE_KEY);
-    return isMapBasemapId(value) ? value : 'default';
-  } catch {
-    return 'default';
-  }
-}
-
-function readStoredFlag(key: string, fallback: boolean): boolean {
-  try {
-    const value = localStorage.getItem(key);
-    if (value === '1') return true;
-    if (value === '0') return false;
-    return fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 const LiveMap = () => {
   const { shipments, refreshShipments, loading } = useShipments();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mapType, setMapType] = useState<MapBasemapId>(readStoredBasemap);
-  const [satelliteLabels, setSatelliteLabels] = useState(() => readStoredFlag(MAP_LABELS_KEY, false));
-  const [showPorts, setShowPorts] = useState(() => readStoredFlag(MAP_PORTS_KEY, true));
-  const [layersOpen, setLayersOpen] = useState(false);
+  const {
+    mapType,
+    setMapType,
+    satelliteLabels,
+    setSatelliteLabels,
+    showPorts,
+    setShowPorts,
+    layersOpen,
+    setLayersOpen,
+  } = useMapLayerPrefs(true);
   const [positions, setPositions] = useState<ShipmentPosition[]>([]);
   const [eventStops, setEventStops] = useState<ReturnType<typeof mapStopsFromEvents>>([]);
   const [lastPoll, setLastPoll] = useState<number | null>(null);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MAP_TYPE_KEY, mapType);
-      localStorage.setItem(MAP_LABELS_KEY, satelliteLabels ? '1' : '0');
-      localStorage.setItem(MAP_PORTS_KEY, showPorts ? '1' : '0');
-    } catch {
-      /* ignore quota / private mode */
-    }
-  }, [mapType, satelliteLabels, showPorts]);
 
   const activeShipments = useMemo(
     () =>
@@ -244,26 +215,17 @@ const LiveMap = () => {
               satelliteLabels={satelliteLabels}
               className="h-[min(60vh,520px)] min-h-[320px]"
             />
-            <button
-              type="button"
-              onClick={() => setLayersOpen(true)}
-              className="absolute top-3 right-3 z-[500] flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-navy-800/90 px-3 text-sm text-text-primary shadow-lg backdrop-blur-sm hover:border-cobalt/40"
-              aria-label="Map layers"
-            >
-              <Layers className="w-4 h-4 text-cobalt" />
-              Layers
-            </button>
+            <MapLayersControl
+              mapType={mapType}
+              onMapTypeChange={setMapType}
+              satelliteLabels={satelliteLabels}
+              onSatelliteLabelsChange={setSatelliteLabels}
+              showPorts={showPorts}
+              onShowPortsChange={setShowPorts}
+              layersOpen={layersOpen}
+              onLayersOpenChange={setLayersOpen}
+            />
           </div>
-          <MapTypeSheet
-            open={layersOpen}
-            onOpenChange={setLayersOpen}
-            mapType={mapType}
-            onMapTypeChange={setMapType}
-            satelliteLabels={satelliteLabels}
-            onSatelliteLabelsChange={setSatelliteLabels}
-            showPorts={showPorts}
-            onShowPortsChange={setShowPorts}
-          />
           {selected && (
             <div className="card-surface p-4 flex flex-wrap gap-4 text-sm">
               <div>
