@@ -56,7 +56,7 @@ const sampleShipment: ShipmentEmailData = {
   positionLabel: 'Arabian Sea',
 };
 
-const statuses = ['Pending', 'In Transit', 'Customs', 'Delivered', 'Exception'] as const;
+const statuses = ['Pending', 'In Transit', 'Customs', 'On Hold', 'Delivered', 'Exception'] as const;
 
 async function send(to: string, subject: string, react: ReactElement) {
   const key = process.env.RESEND_API_KEY;

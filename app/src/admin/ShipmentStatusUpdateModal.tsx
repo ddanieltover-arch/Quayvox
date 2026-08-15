@@ -8,6 +8,7 @@ const statuses: Shipment['status'][] = [
   'Pending',
   'In Transit',
   'Customs',
+  'On Hold',
   'Delivered',
   'Exception',
 ];
@@ -188,7 +189,7 @@ export function ShipmentStatusUpdateModal({
 
           <p className="text-xs text-text-secondary">
             Every save emails the admin, sender, and receiver when their addresses are on file
-            (Pending, In Transit, Customs, Delivered, and Exception each use matching copy).
+            (Pending, In Transit, Customs, On Hold, Delivered, and Exception each use matching copy).
           </p>
 
           <div className="flex gap-2 pt-2">

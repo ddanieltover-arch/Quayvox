@@ -9,6 +9,7 @@ const statuses: Shipment['status'][] = [
   'Pending',
   'In Transit',
   'Customs',
+  'On Hold',
   'Delivered',
   'Exception',
 ];

@@ -23,7 +23,7 @@ const LiveMap = () => {
   const activeShipments = useMemo(
     () =>
       shipments.filter((s) =>
-        ['Pending', 'In Transit', 'Customs', 'Exception'].includes(s.status)
+        ['Pending', 'In Transit', 'Customs', 'On Hold', 'Exception'].includes(s.status)
       ),
     [shipments]
   );

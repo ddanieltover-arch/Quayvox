@@ -64,7 +64,7 @@ export function adminShipmentUrl(shipmentId: string): string {
   return appUrl(`/admin/shipments?highlight=${encodeURIComponent(shipmentId)}`);
 }
 
-export type ShipmentStatus = 'Pending' | 'In Transit' | 'Customs' | 'Delivered' | 'Exception';
+export type ShipmentStatus = 'Pending' | 'In Transit' | 'Customs' | 'On Hold' | 'Delivered' | 'Exception';
 export type EmailTone = 'default' | 'success' | 'warning' | 'danger' | 'customs';
 export type EmailAudience = 'customer' | 'admin';
 
@@ -83,6 +83,7 @@ export const STATUS_COLORS: Record<
   Pending: { bg: '#FEF3C7', text: '#B45309', border: '#FCD34D', accent: BRAND.warning },
   'In Transit': { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD', accent: BRAND.cobalt },
   Customs: { bg: '#EDE9FE', text: '#6D28D9', border: '#C4B5FD', accent: BRAND.purple },
+  'On Hold': { bg: '#FFEDD5', text: '#C2410C', border: '#FDBA74', accent: BRAND.warning },
   Delivered: { bg: '#D1FAE5', text: '#047857', border: '#6EE7B7', accent: BRAND.success },
   Exception: { bg: '#FEE2E2', text: '#B91C1C', border: '#FCA5A5', accent: BRAND.error },
 };
@@ -94,6 +95,7 @@ export const STATUS_COLORS_ON_DARK: Record<
   Pending: { bg: 'rgba(245, 158, 11, 0.18)', text: '#FBBF24', border: 'rgba(245, 158, 11, 0.35)' },
   'In Transit': { bg: 'rgba(79, 109, 245, 0.22)', text: '#A5B4FC', border: 'rgba(79, 109, 245, 0.40)' },
   Customs: { bg: 'rgba(167, 139, 250, 0.20)', text: '#C4B5FD', border: 'rgba(167, 139, 250, 0.38)' },
+  'On Hold': { bg: 'rgba(249, 115, 22, 0.20)', text: '#FDBA74', border: 'rgba(249, 115, 22, 0.38)' },
   Delivered: { bg: 'rgba(39, 194, 106, 0.18)', text: '#6EE7B7', border: 'rgba(39, 194, 106, 0.38)' },
   Exception: { bg: 'rgba(239, 68, 68, 0.20)', text: '#FCA5A5', border: 'rgba(239, 68, 68, 0.40)' },
 };
@@ -105,6 +107,7 @@ export function toneForStatus(status: ShipmentStatus): EmailTone {
     case 'Exception':
       return 'danger';
     case 'Pending':
+    case 'On Hold':
       return 'warning';
     case 'Customs':
       return 'customs';
@@ -125,6 +128,10 @@ export const CUSTOMER_STATUS_COPY: Record<ShipmentStatus, { headline: string; bo
   Customs: {
     headline: 'Customs clearance is underway',
     body: 'Your shipment is with customs. We will notify you as soon as clearance completes, or if documents are required.',
+  },
+  'On Hold': {
+    headline: 'Your shipment is on hold',
+    body: 'Movement is paused for now. We will update you as soon as the hold is released and transit resumes.',
   },
   Delivered: {
     headline: 'Delivered. Thank you for shipping with us.',
@@ -148,6 +155,10 @@ export const ADMIN_STATUS_COPY: Record<ShipmentStatus, { headline: string; body:
   Customs: {
     headline: 'Shipment is at customs',
     body: 'Review documentation readiness and carrier notices. Clearance delays should be flagged to the customer promptly.',
+  },
+  'On Hold': {
+    headline: 'Shipment is on hold',
+    body: 'Transit is paused. Confirm the hold reason, next action, and keep the customer informed.',
   },
   Delivered: {
     headline: 'Shipment delivered',

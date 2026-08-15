@@ -34,6 +34,7 @@ const migrations = [
   '005_quayvox_carrier.sql',
   '006_unified_addresses.sql',
   '007_shipment_item_name.sql',
+  '008_on_hold_status.sql',
 ];
 
 await client.connect();

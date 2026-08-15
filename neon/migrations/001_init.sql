@@ -9,7 +9,7 @@ create table if not exists public.shipments (
   origin text not null,
   destination text not null,
   carrier text not null,
-  status text not null check (status in ('Pending', 'In Transit', 'Customs', 'Delivered', 'Exception')),
+  status text not null check (status in ('Pending', 'In Transit', 'Customs', 'On Hold', 'Delivered', 'Exception')),
   weight numeric not null default 0,
   dim_l numeric not null default 0,
   dim_w numeric not null default 0,

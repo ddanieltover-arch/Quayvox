@@ -32,6 +32,33 @@ interface ShipmentMapProps {
   interactive?: boolean;
 }
 
+/** Allow close clusters to zoom in; wide routes still fit naturally. */
+function maxZoomForBounds(bounds: L.LatLngBounds): number {
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const span = Math.max(Math.abs(ne.lat - sw.lat), Math.abs(ne.lng - sw.lng));
+  if (span < 0.01) return 16;
+  if (span < 0.05) return 15;
+  if (span < 0.15) return 14;
+  if (span < 0.5) return 12;
+  if (span < 2) return 10;
+  if (span < 8) return 8;
+  return 6;
+}
+
+function padTinyBounds(bounds: L.LatLngBounds): L.LatLngBounds {
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const span = Math.max(Math.abs(ne.lat - sw.lat), Math.abs(ne.lng - sw.lng));
+  if (span >= 0.004) return bounds;
+  const center = bounds.getCenter();
+  const pad = 0.008;
+  return L.latLngBounds(
+    [center.lat - pad, center.lng - pad],
+    [center.lat + pad, center.lng + pad]
+  );
+}
+
 function isValidCoord(lat: number | null | undefined, lng: number | null | undefined): boolean {
   return (
     lat != null &&
@@ -609,7 +636,6 @@ export function ShipmentMap({
 
       const selected = selectedId ? geoShipments.find((s) => s.id === selectedId) : undefined;
       let targetBounds = bounds;
-      let maxZoom = 6;
 
       if (selected) {
         const selectedBounds = L.latLngBounds([]);
@@ -624,13 +650,13 @@ export function ShipmentMap({
         if (cur) extend(cur[0], cur[1]);
         if (selectedBounds.isValid()) {
           targetBounds = selectedBounds;
-          maxZoom = isValidCoord(selected.currentLat, selected.currentLng) ? 12 : 6;
         }
       }
 
+      targetBounds = padTinyBounds(targetBounds);
       map.fitBounds(targetBounds, {
         padding: [56, 56],
-        maxZoom,
+        maxZoom: maxZoomForBounds(targetBounds),
         animate: !reduceMotion,
         duration: reduceMotion ? 0 : 0.6,
       });

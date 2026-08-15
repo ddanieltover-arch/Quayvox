@@ -49,6 +49,7 @@ function toneForStatus(status) {
     case "Exception":
       return "danger";
     case "Pending":
+    case "On Hold":
       return "warning";
     case "Customs":
       return "customs";
@@ -117,6 +118,7 @@ var init_constants = __esm({
       Pending: { bg: "#FEF3C7", text: "#B45309", border: "#FCD34D", accent: BRAND.warning },
       "In Transit": { bg: "#DBEAFE", text: "#1D4ED8", border: "#93C5FD", accent: BRAND.cobalt },
       Customs: { bg: "#EDE9FE", text: "#6D28D9", border: "#C4B5FD", accent: BRAND.purple },
+      "On Hold": { bg: "#FFEDD5", text: "#C2410C", border: "#FDBA74", accent: BRAND.warning },
       Delivered: { bg: "#D1FAE5", text: "#047857", border: "#6EE7B7", accent: BRAND.success },
       Exception: { bg: "#FEE2E2", text: "#B91C1C", border: "#FCA5A5", accent: BRAND.error }
     };
@@ -124,6 +126,7 @@ var init_constants = __esm({
       Pending: { bg: "rgba(245, 158, 11, 0.18)", text: "#FBBF24", border: "rgba(245, 158, 11, 0.35)" },
       "In Transit": { bg: "rgba(79, 109, 245, 0.22)", text: "#A5B4FC", border: "rgba(79, 109, 245, 0.40)" },
       Customs: { bg: "rgba(167, 139, 250, 0.20)", text: "#C4B5FD", border: "rgba(167, 139, 250, 0.38)" },
+      "On Hold": { bg: "rgba(249, 115, 22, 0.20)", text: "#FDBA74", border: "rgba(249, 115, 22, 0.38)" },
       Delivered: { bg: "rgba(39, 194, 106, 0.18)", text: "#6EE7B7", border: "rgba(39, 194, 106, 0.38)" },
       Exception: { bg: "rgba(239, 68, 68, 0.20)", text: "#FCA5A5", border: "rgba(239, 68, 68, 0.40)" }
     };
@@ -139,6 +142,10 @@ var init_constants = __esm({
       Customs: {
         headline: "Customs clearance is underway",
         body: "Your shipment is with customs. We will notify you as soon as clearance completes, or if documents are required."
+      },
+      "On Hold": {
+        headline: "Your shipment is on hold",
+        body: "Movement is paused for now. We will update you as soon as the hold is released and transit resumes."
       },
       Delivered: {
         headline: "Delivered. Thank you for shipping with us.",
@@ -161,6 +168,10 @@ var init_constants = __esm({
       Customs: {
         headline: "Shipment is at customs",
         body: "Review documentation readiness and carrier notices. Clearance delays should be flagged to the customer promptly."
+      },
+      "On Hold": {
+        headline: "Shipment is on hold",
+        body: "Transit is paused. Confirm the hold reason, next action, and keep the customer informed."
       },
       Delivered: {
         headline: "Shipment delivered",
@@ -2673,7 +2684,7 @@ var createSchema = import_zod5.z.object({
   origin: import_zod5.z.string().trim().min(1),
   destination: import_zod5.z.string().trim().min(1),
   carrier: import_zod5.z.string().trim().min(1),
-  status: import_zod5.z.enum(["Pending", "In Transit", "Customs", "Delivered", "Exception"]),
+  status: import_zod5.z.enum(["Pending", "In Transit", "Customs", "On Hold", "Delivered", "Exception"]),
   weight: import_zod5.z.number(),
   dim_l: import_zod5.z.number(),
   dim_w: import_zod5.z.number(),
@@ -2703,7 +2714,7 @@ var patchSchema = import_zod5.z.object({
   origin: import_zod5.z.string().trim().min(1).optional(),
   destination: import_zod5.z.string().trim().min(1).optional(),
   carrier: import_zod5.z.string().trim().min(1).optional(),
-  status: import_zod5.z.enum(["Pending", "In Transit", "Customs", "Delivered", "Exception"]).optional(),
+  status: import_zod5.z.enum(["Pending", "In Transit", "Customs", "On Hold", "Delivered", "Exception"]).optional(),
   weight: import_zod5.z.number().optional(),
   dim_l: import_zod5.z.number().optional(),
   dim_w: import_zod5.z.number().optional(),
