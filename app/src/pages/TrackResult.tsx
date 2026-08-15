@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MapPin, Package, Clock, Search } from 'lucide-react';
 import { getStatusColor } from '@/data/mockShipments';
 import { ShipmentMap, shipmentHasMapGeo } from '@/components/tracking/ShipmentMap';
+import { MapErrorBoundary } from '@/components/tracking/MapErrorBoundary';
 import { MapLayersControl, useMapLayerPrefs } from '@/components/tracking/MapTypeSheet';
 import { ShipmentDetailsDialog } from '@/components/tracking/ShipmentDetailsDialog';
 import { useTrackPolling } from '@/hooks/useTrackPolling';
@@ -53,6 +54,7 @@ const TrackResult = () => {
         currentLat: shipment.currentLat,
         currentLng: shipment.currentLng,
         currentAddress: shipment.currentAddress,
+        mode: shipment.mode,
         positions,
         stops: mapStopsFromEvents(events),
       }
@@ -193,13 +195,15 @@ const TrackResult = () => {
             </div>
             {hasMapGeo && mapShipment ? (
               <div className="relative mx-5 sm:mx-6 mb-5 sm:mb-6">
-                <ShipmentMap
-                  shipments={[mapShipment]}
-                  showPorts={showPorts}
-                  basemap={mapType}
-                  satelliteLabels={satelliteLabels}
-                  className="h-64 sm:h-80"
-                />
+                <MapErrorBoundary>
+                  <ShipmentMap
+                    shipments={[mapShipment]}
+                    showPorts={showPorts}
+                    basemap={mapType}
+                    satelliteLabels={satelliteLabels}
+                    className="h-64 sm:h-80"
+                  />
+                </MapErrorBoundary>
                 <MapLayersControl
                   mapType={mapType}
                   onMapTypeChange={setMapType}

@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Layers } from 'lucide-react';
+import { Layers, X } from 'lucide-react';
 import { isMapBasemapId, MAP_BASEMAPS, MAP_BASEMAP_IDS, type MapBasemapId } from '@/lib/mapConfig';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
 const MAP_TYPE_KEY = 'qv-live-map-type';
@@ -35,8 +28,8 @@ function readStoredFlag(key: string, fallback: boolean): boolean {
 }
 
 export function useMapLayerPrefs(defaultShowPorts = false) {
-  const [mapType, setMapType] = useState<MapBasemapId>(readStoredBasemap);
-  const [satelliteLabels, setSatelliteLabels] = useState(() => readStoredFlag(MAP_LABELS_KEY, false));
+  const [mapType, setMapType] = useState<MapBasemapId>(() => readStoredBasemap());
+  const [satelliteLabels, setSatelliteLabels] = useState(() => readStoredFlag(MAP_LABELS_KEY, true));
   const [showPorts, setShowPorts] = useState(() => readStoredFlag(MAP_PORTS_KEY, defaultShowPorts));
   const [layersOpen, setLayersOpen] = useState(false);
 
@@ -114,7 +107,7 @@ const PREVIEW: Record<MapBasemapId, string> = {
   satellite:
     'radial-gradient(circle at 40% 35%, #3d7a4a 0%, #1a4a32 40%, #0e2a28 70%), linear-gradient(160deg, #1e4d6b 0%, #2d5a28 55%, #3a2e18 100%)',
   terrain:
-    'linear-gradient(180deg, #87a87a 0%, #5d8a4a 35%, #c4b896 70%, #6b8f5a 100%)',
+    'linear-gradient(180deg, #dce8c8 0%, #f4f1e8 40%, #ffffff 70%, #c8e0b0 100%)',
 };
 
 export interface MapTypeSheetProps {
@@ -181,18 +174,37 @@ export function MapTypeSheet({
   showPorts,
   onShowPortsChange,
 }: MapTypeSheetProps) {
+  if (!open) return null;
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="border-white/10 bg-navy-800 sm:mx-auto sm:max-w-md sm:rounded-t-[28px] gap-0 pb-6 z-[1100]"
+    <div className="fixed inset-0 z-[2000] flex items-end justify-center sm:items-end">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/40"
+        aria-label="Close map type"
+        onClick={() => onOpenChange(false)}
+      />
+      <div
+        role="dialog"
+        aria-labelledby="qv-map-type-title"
+        className="relative z-[2001] w-full max-w-md rounded-t-[28px] border border-white/10 bg-navy-800 pb-6 shadow-2xl"
       >
-        <SheetHeader className="pb-2">
-          <SheetTitle className="font-display text-lg text-text-primary">Map type</SheetTitle>
-          <SheetDescription className="text-text-secondary">
-            Choose a basemap and optional map details.
-          </SheetDescription>
-        </SheetHeader>
+        <div className="flex items-start justify-between gap-3 p-4 pb-2">
+          <div>
+            <h2 id="qv-map-type-title" className="font-display text-lg font-semibold text-text-primary">
+              Map type
+            </h2>
+            <p className="text-sm text-text-secondary">Choose a basemap and optional map details.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="rounded-lg p-2 text-text-secondary hover:bg-white/5 hover:text-text-primary"
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
 
         <div className="grid grid-cols-3 gap-3 px-4 pt-2">
           {MAP_BASEMAP_IDS.map((id) => {
@@ -237,7 +249,7 @@ export function MapTypeSheet({
           />
           <DetailToggle label="Ports" checked={showPorts} onChange={onShowPortsChange} />
         </div>
-      </SheetContent>
-    </Sheet>
+      </div>
+    </div>
   );
 }

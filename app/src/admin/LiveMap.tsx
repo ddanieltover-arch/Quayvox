@@ -7,6 +7,7 @@ import {
   resolveDisplayPosition,
   type MapShipmentGeo,
 } from '@/components/tracking/ShipmentMap';
+import { MapErrorBoundary } from '@/components/tracking/MapErrorBoundary';
 import { MapLayersControl, useMapLayerPrefs } from '@/components/tracking/MapTypeSheet';
 import {
   mapPositionRow,
@@ -122,6 +123,7 @@ const LiveMap = () => {
         currentLat: s.currentLat,
         currentLng: s.currentLng,
         currentAddress: s.currentAddress,
+        mode: s.mode,
         positions: s.id === selectedId ? positions : undefined,
         stops: s.id === selectedId ? eventStops : undefined,
       })),
@@ -206,15 +208,17 @@ const LiveMap = () => {
 
         <div className="relative min-h-[320px] flex flex-col gap-3">
           <div className="relative flex-1 min-h-[320px]">
-            <ShipmentMap
-              shipments={mapShipments}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              showPorts={showPorts}
-              basemap={mapType}
-              satelliteLabels={satelliteLabels}
-              className="h-[min(60vh,520px)] min-h-[320px]"
-            />
+            <MapErrorBoundary>
+              <ShipmentMap
+                shipments={mapShipments}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                showPorts={showPorts}
+                basemap={mapType}
+                satelliteLabels={satelliteLabels}
+                className="h-[min(60vh,520px)] min-h-[320px]"
+              />
+            </MapErrorBoundary>
             <MapLayersControl
               mapType={mapType}
               onMapTypeChange={setMapType}

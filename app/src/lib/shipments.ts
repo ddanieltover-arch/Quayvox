@@ -159,8 +159,8 @@ export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
     priority: row.priority,
     shipper: row.shipper,
     consignee: row.consignee,
-    createdAt: row.created_at.slice(0, 10),
-    updatedAt: row.updated_at.slice(0, 10),
+    createdAt: String(row.created_at ?? '').slice(0, 10),
+    updatedAt: String(row.updated_at ?? '').slice(0, 10),
     documents: row.documents ?? [],
     tags: row.tags ?? [],
     customerEmail: row.customer_email,
@@ -214,7 +214,7 @@ export function mapStopsFromEvents(events: ShipmentEvent[] | null | undefined): 
   );
   const stops: MapEventStop[] = [];
   for (const event of chronological) {
-    const label = event.location?.trim();
+    const label = typeof event.location === 'string' ? event.location.trim() : '';
     if (!label) continue;
     const last = stops[stops.length - 1];
     if (last && last.label.toLowerCase() === label.toLowerCase()) {

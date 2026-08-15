@@ -13,6 +13,7 @@ export type MapBasemapConfig = MapTileLayerConfig & {
   label: string;
   fallback?: MapTileLayerConfig;
   labelsOverlay?: MapTileLayerConfig;
+  overlays?: MapTileLayerConfig[];
 };
 
 export const MAP_TILE_LAYERS: MapTileLayerConfig[] = [
@@ -63,6 +64,20 @@ export const SATELLITE_LABELS_OVERLAY: MapTileLayerConfig = {
   maxZoom: 20,
 };
 
+const ESRI_TRANSPORTATION: MapTileLayerConfig = {
+  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+  attribution: 'Tiles &copy; Esri',
+  maxZoom: 19,
+};
+
+const CARTO_VOYAGER: MapTileLayerConfig = {
+  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  attribution:
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: 'abcd',
+  maxZoom: 20,
+};
+
 export const MAP_BASEMAPS: Record<MapBasemapId, MapBasemapConfig> = {
   default: {
     id: 'default',
@@ -82,15 +97,15 @@ export const MAP_BASEMAPS: Record<MapBasemapId, MapBasemapConfig> = {
     maxZoom: 19,
     fallback: OSM_FALLBACK,
     labelsOverlay: SATELLITE_LABELS_OVERLAY,
+    overlays: [ESRI_TRANSPORTATION, SATELLITE_LABELS_OVERLAY],
   },
   terrain: {
     id: 'terrain',
     label: 'Terrain',
-    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    attribution:
-      'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
-    subdomains: 'abc',
-    maxZoom: 17,
+    url: CARTO_VOYAGER.url,
+    attribution: CARTO_VOYAGER.attribution,
+    subdomains: CARTO_VOYAGER.subdomains,
+    maxZoom: CARTO_VOYAGER.maxZoom,
     fallback: ESRI_TOPO,
   },
 };

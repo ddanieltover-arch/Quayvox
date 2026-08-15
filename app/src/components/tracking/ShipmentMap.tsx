@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { MAP_BASEMAPS, MAP_TILE_LAYERS, type MapBasemapId } from '@/lib/mapConfig';
 import { interpolateCoords, lookupPortCoords, PORT_COORDINATES, type GeoCoord } from '@/lib/geoPorts';
 import { geocodeAddressClient } from '@/lib/geocodeClient';
+import { fetchSnappedRoute, formatRouteDuration } from '@/lib/routeClient';
 import type { ShipmentPosition } from '@/lib/shipments';
 
 export interface MapStopGeo {
@@ -29,6 +30,7 @@ export interface MapShipmentGeo {
   destinationLng?: number | null;
   currentLat?: number | null;
   currentLng?: number | null;
+  mode?: string;
   positions?: ShipmentPosition[];
   /** Timeline addresses to pin even when the GPS trail is incomplete. */
   stops?: MapStopGeo[];
@@ -50,7 +52,7 @@ function applyBasemapTiles(
   basemap: MapBasemapId,
   satelliteLabels: boolean,
   tileLayerRef: { current: L.TileLayer | null },
-  overlayLayerRef: { current: L.TileLayer | null },
+  overlayLayersRef: { current: L.TileLayer[] },
   tileFallbackRef: { current: number },
   setMapError: (msg: string | null) => void,
   useFallback: boolean
@@ -73,10 +75,10 @@ function applyBasemapTiles(
     map.removeLayer(tileLayerRef.current);
     tileLayerRef.current = null;
   }
-  if (overlayLayerRef.current) {
-    map.removeLayer(overlayLayerRef.current);
-    overlayLayerRef.current = null;
+  for (const overlay of overlayLayersRef.current) {
+    map.removeLayer(overlay);
   }
+  overlayLayersRef.current = [];
 
   const layer = L.tileLayer(source.url, {
     attribution: source.attribution,
@@ -92,7 +94,7 @@ function applyBasemapTiles(
         basemap,
         satelliteLabels,
         tileLayerRef,
-        overlayLayerRef,
+        overlayLayersRef,
         tileFallbackRef,
         setMapError,
         true
@@ -105,15 +107,20 @@ function applyBasemapTiles(
   layer.addTo(map);
   tileLayerRef.current = layer;
 
-  if (basemap === 'satellite' && satelliteLabels && config.labelsOverlay && !useFallback) {
-    const overlay = L.tileLayer(config.labelsOverlay.url, {
-      attribution: config.labelsOverlay.attribution,
-      subdomains: config.labelsOverlay.subdomains,
-      maxZoom: config.labelsOverlay.maxZoom ?? 19,
+  const overlayConfigs =
+    basemap === 'satellite' && satelliteLabels && !useFallback
+      ? config.overlays ?? (config.labelsOverlay ? [config.labelsOverlay] : [])
+      : [];
+
+  for (const overlayConfig of overlayConfigs) {
+    const overlay = L.tileLayer(overlayConfig.url, {
+      attribution: overlayConfig.attribution,
+      subdomains: overlayConfig.subdomains,
+      maxZoom: overlayConfig.maxZoom ?? 19,
       pane: 'overlayPane',
     });
     overlay.addTo(map);
-    overlayLayerRef.current = overlay;
+    overlayLayersRef.current.push(overlay);
   }
 
   setMapError(null);
@@ -343,6 +350,61 @@ function buildRouteLatLngs(s: MapShipmentGeo): L.LatLngExpression[] {
   return coords;
 }
 
+function toRad(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+function toDeg(rad: number): number {
+  return (rad * 180) / Math.PI;
+}
+
+function geodesicSegment(a: GeoCoord, b: GeoCoord, steps = 18): GeoCoord[] {
+  const lat1 = toRad(a[0]);
+  const lng1 = toRad(a[1]);
+  const lat2 = toRad(b[0]);
+  const lng2 = toRad(b[1]);
+  const d =
+    2 *
+    Math.asin(
+      Math.sqrt(
+        Math.sin((lat2 - lat1) / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin((lng2 - lng1) / 2) ** 2
+      )
+    );
+  if (!Number.isFinite(d) || d < 1e-8) return [a, b];
+
+  const out: GeoCoord[] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const f = i / steps;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(lat1) * Math.cos(lng1) + B * Math.cos(lat2) * Math.cos(lng2);
+    const y = A * Math.cos(lat1) * Math.sin(lng1) + B * Math.cos(lat2) * Math.sin(lng2);
+    const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+    out.push([toDeg(Math.atan2(z, Math.sqrt(x * x + y * y))), toDeg(Math.atan2(y, x))]);
+  }
+  return out;
+}
+
+function smoothCurve(points: L.LatLngExpression[]): L.LatLngExpression[] {
+  if (points.length < 2) return points;
+  const out: L.LatLngExpression[] = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i] as GeoCoord;
+    const b = points[i + 1] as GeoCoord;
+    const segment = geodesicSegment(a, b);
+    if (i > 0) segment.shift();
+    out.push(...segment);
+  }
+  return out;
+}
+
+function routeWaypoints(s: MapShipmentGeo): Array<[number, number]> {
+  return buildRouteLatLngs(s)
+    .map((point) => (Array.isArray(point) ? [Number(point[0]), Number(point[1])] : null))
+    .filter((point): point is [number, number] => point != null && isValidCoord(point[0], point[1]));
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -516,7 +578,7 @@ export function ShipmentMap({
   className = '',
   interactive = true,
   basemap = 'default',
-  satelliteLabels = false,
+  satelliteLabels = true,
 }: ShipmentMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -524,7 +586,7 @@ export function ShipmentMap({
   const markersRef = useRef<L.Marker[]>([]);
   const portsLayerRef = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const overlayLayerRef = useRef<L.TileLayer | null>(null);
+  const overlayLayersRef = useRef<L.TileLayer[]>([]);
   const fittedKeyRef = useRef<string>('');
   const drawnRouteIdsRef = useRef<Set<string>>(new Set());
   const stopRouteFlowRef = useRef<(() => void) | null>(null);
@@ -539,6 +601,9 @@ export function ShipmentMap({
   const [mapReady, setMapReady] = useState(false);
   const [resolvedShipments, setResolvedShipments] = useState<MapShipmentGeo[]>(shipments);
   const [locating, setLocating] = useState(false);
+  const [snappedRoutes, setSnappedRoutes] = useState<
+    Record<string, { coords: L.LatLngExpression[]; durationSec: number | null }>
+  >({});
 
   const reduceMotion = useMemo(
     () =>
@@ -593,6 +658,36 @@ export function ShipmentMap({
     !hasGeo && resolvedShipments.some(shipmentHasAddress);
 
   useEffect(() => {
+    let cancelled = false;
+    const roadShipments = geoShipments.filter((s) => s.mode === 'Road');
+    if (roadShipments.length === 0) {
+      setSnappedRoutes({});
+      return;
+    }
+
+    void (async () => {
+      const next: Record<string, { coords: L.LatLngExpression[]; durationSec: number | null }> = {};
+      for (const shipment of roadShipments) {
+        const waypoints = routeWaypoints(shipment);
+        if (waypoints.length < 2) continue;
+        const snapped = await fetchSnappedRoute(waypoints);
+        if (cancelled) return;
+        if (snapped?.coordinates?.length) {
+          next[shipment.id] = {
+            coords: snapped.coordinates,
+            durationSec: snapped.durationSec,
+          };
+        }
+      }
+      if (!cancelled) setSnappedRoutes(next);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [geoShipments]);
+
+  useEffect(() => {
     if (!hasGeo || !containerRef.current) return;
 
     let disposed = false;
@@ -616,7 +711,7 @@ export function ShipmentMap({
       basemapRef.current,
       labelsRef.current,
       tileLayerRef,
-      overlayLayerRef,
+      overlayLayersRef,
       tileFallbackRef,
       setMapError,
       false
@@ -641,7 +736,7 @@ export function ShipmentMap({
       markersRef.current = [];
       portsLayerRef.current = null;
       tileLayerRef.current = null;
-      overlayLayerRef.current = null;
+      overlayLayersRef.current = [];
       stopRouteFlowRef.current?.();
       stopRouteFlowRef.current = null;
       stopMarkerAnimsRef.current.forEach((stop) => stop());
@@ -663,7 +758,7 @@ export function ShipmentMap({
       basemap,
       satelliteLabels,
       tileLayerRef,
-      overlayLayerRef,
+      overlayLayersRef,
       tileFallbackRef,
       setMapError,
       false
@@ -704,20 +799,47 @@ export function ShipmentMap({
     const multi = geoShipments.length > 1;
 
     for (const s of geoShipments) {
-      const route = buildRouteLatLngs(s);
+      const straight = buildRouteLatLngs(s);
+      const snapped = s.mode === 'Road' ? snappedRoutes[s.id] : undefined;
+      const route =
+        snapped?.coords && snapped.coords.length >= 2
+          ? snapped.coords
+          : s.mode === 'Road'
+            ? straight
+            : smoothCurve(straight);
       if (route.length >= 2) {
         const isFlowTarget = flowId != null && s.id === flowId;
+        const hold = s.status === 'On Hold';
+        const faded = multi && flowId && !isFlowTarget;
+        const casing = L.polyline(route, {
+          color: hold ? '#7F1D1D' : '#1E3A8A',
+          weight: isFlowTarget ? 10 : 8,
+          opacity: faded ? 0.25 : 0.55,
+          lineCap: 'round',
+          lineJoin: 'round',
+          className: 'qv-map-route-case',
+        }).addTo(map);
         const line = L.polyline(route, {
-          color: s.status === 'On Hold' ? '#EF4444' : '#4F6DF5',
-          weight: isFlowTarget ? 3 : 2.5,
-          opacity: multi && flowId && !isFlowTarget ? 0.45 : 0.85,
+          color: hold ? '#EF4444' : '#4F6DF5',
+          weight: isFlowTarget ? 6 : 5,
+          opacity: faded ? 0.45 : 1,
+          lineCap: 'round',
+          lineJoin: 'round',
           className: 'qv-map-route',
         }).addTo(map);
-        routesRef.current.push(line);
+        const durationLabel = formatRouteDuration(snapped?.durationSec);
+        if (durationLabel && isFlowTarget) {
+          line.bindTooltip(durationLabel, {
+            permanent: true,
+            direction: 'center',
+            className: 'qv-map-eta',
+            opacity: 1,
+          });
+        }
+        routesRef.current.push(casing, line);
         routeById.set(s.id, line);
         route.forEach((point) => bounds.extend(point));
 
-        // Draw-in once per shipment while this map instance is alive.
         if (!drawnRouteIdsRef.current.has(s.id)) {
           if (!reduceMotion) {
             routesToDrawIn.push({ id: s.id, line });
@@ -958,7 +1080,7 @@ export function ShipmentMap({
       // Allow retry if this effect cleaned up before draw-in ran (e.g. Strict Mode).
       pendingDrawIds.clear();
     };
-  }, [geoShipments, selectedId, onSelect, showPorts, interactive, reduceMotion, mapReady]);
+  }, [geoShipments, selectedId, onSelect, showPorts, interactive, reduceMotion, mapReady, snappedRoutes]);
 
   if (!hasGeo) {
     return (
@@ -1113,6 +1235,18 @@ export function ShipmentMap({
         }
         .leaflet-popup-content-wrapper {
           border-radius: 8px;
+        }
+        .qv-map-eta {
+          background: #1E3A8A;
+          color: #F4F6FF;
+          border: none;
+          border-radius: 9999px;
+          padding: 4px 10px;
+          font: 600 11px/1.2 system-ui, sans-serif;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+        .qv-map-eta::before {
+          display: none;
         }
       `}</style>
     </div>

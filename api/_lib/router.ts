@@ -3,6 +3,7 @@ import { handleAuthLogin, handleAuthLogout, handleAuthMe } from './handlers/auth
 import { handleContact } from './handlers/contact';
 import { handleGeocode } from './handlers/geocode';
 import { handleNotifyShipment } from './handlers/notify-shipment';
+import { handleRoute } from './handlers/route';
 import { handleShipmentById, handleShipmentsCollection } from './handlers/shipments';
 import { handleTrack } from './handlers/track';
 
@@ -61,6 +62,11 @@ export async function routeRequest(req: VercelRequest, res: VercelResponse): Pro
 
   if (root === 'geocode' && !second) {
     await handleGeocode(req, res);
+    return;
+  }
+
+  if (root === 'route' && !second) {
+    await handleRoute(req, res);
     return;
   }
 
