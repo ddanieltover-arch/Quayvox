@@ -2210,19 +2210,33 @@ function asNullableDate(value) {
   const d = new Date(String(value));
   return Number.isNaN(d.getTime()) ? null : d;
 }
+function readNamed(row, key) {
+  if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+  if (key in row) return row[key];
+  return void 0;
+}
 function plainShipmentRow(row) {
   const out = {
-    id: row.id,
-    created_at: row.created_at,
-    updated_at: row.updated_at
+    id: readNamed(row, "id"),
+    created_at: readNamed(row, "created_at"),
+    updated_at: readNamed(row, "updated_at")
   };
   for (const key of UPDATE_COLUMNS) {
-    out[key] = row[key];
+    out[key] = readNamed(row, key);
+  }
+  if (row && typeof row === "object") {
+    for (const [k, v] of Object.entries(row)) {
+      if (!/^\d+$/.test(k) && out[k] === void 0) out[k] = v;
+    }
   }
   return out;
 }
-function patchedOrExisting(patch, existing, key) {
-  return Object.prototype.hasOwnProperty.call(patch, key) ? patch[key] : existing[key];
+function patchedEmail(patch, existing, key) {
+  if (Object.prototype.hasOwnProperty.call(patch, key)) {
+    const next = asNullableString2(patch[key]);
+    if (next) return next;
+  }
+  return asNullableString2(existing[key]);
 }
 function resolveGeoDefaults(payload) {
   const next = { ...payload };
@@ -2251,10 +2265,10 @@ async function listShipments() {
   let backfilled = 0;
   for (const row of rows) {
     if (backfilled < 1 && needsGeoEnrichment(row)) {
-      enriched.push(await persistMissingShipmentGeo(row));
+      enriched.push(plainShipmentRow(await persistMissingShipmentGeo(row)));
       backfilled += 1;
     } else {
-      enriched.push(row);
+      enriched.push(plainShipmentRow(row));
     }
   }
   return enriched;
@@ -2302,12 +2316,13 @@ async function persistMissingShipmentGeo(row) {
       label: asNullableString2(row.current_address)
     });
   }
-  return next;
+  return plainShipmentRow(next);
 }
 async function getShipmentById(id) {
   const sql = getSql();
   const rows = await sql`select * from public.shipments where id = ${id} limit 1`;
-  return rows[0] ?? null;
+  const row = rows[0];
+  return row ? plainShipmentRow(row) : null;
 }
 async function getShipmentByTracking(tracking) {
   const sql = getSql();
@@ -2320,7 +2335,7 @@ async function getShipmentByTracking(tracking) {
   `;
   const row = rows[0] ?? null;
   if (!row) return null;
-  return persistMissingShipmentGeo(row);
+  return persistMissingShipmentGeo(plainShipmentRow(row));
 }
 async function getEventsByTracking(tracking) {
   const sql = getSql();
@@ -2479,7 +2494,8 @@ async function insertShipment(payload) {
     )
     returning *
   `;
-  return rows[0] ?? null;
+  const created = rows[0];
+  return created ? plainShipmentRow(created) : null;
 }
 async function updateShipment(id, patch) {
   const existingRaw = await getShipmentById(id);
@@ -2505,13 +2521,9 @@ async function updateShipment(id, patch) {
   }
   const senderName = asString(withGeo.sender_name ?? withGeo.shipper);
   const receiverName = asString(withGeo.receiver_name ?? withGeo.consignee);
-  const senderEmail = asNullableString2(patchedOrExisting(patch, existing, "sender_email"));
-  const receiverEmail = asNullableString2(
-    patchedOrExisting(patch, existing, "receiver_email") ?? patchedOrExisting(patch, existing, "customer_email")
-  );
-  const customerEmail = asNullableString2(
-    patchedOrExisting(patch, existing, "customer_email") ?? receiverEmail
-  );
+  const senderEmail = patchedEmail(patch, existing, "sender_email");
+  const receiverEmail = patchedEmail(patch, existing, "receiver_email") ?? patchedEmail(patch, existing, "customer_email");
+  const customerEmail = patchedEmail(patch, existing, "customer_email") ?? receiverEmail;
   const senderAddress = asString(withGeo.sender_address ?? withGeo.origin);
   const receiverAddress = asString(withGeo.receiver_address ?? withGeo.destination);
   const sql = getSql();
@@ -2571,7 +2583,14 @@ async function updateShipment(id, patch) {
     where id = ${id}
     returning *
   `;
-  return rows[0] ?? null;
+  const saved = rows[0];
+  if (!saved) return null;
+  return {
+    ...plainShipmentRow(saved),
+    sender_email: senderEmail,
+    receiver_email: receiverEmail,
+    customer_email: customerEmail
+  };
 }
 async function deleteShipment(id) {
   const sql = getSql();
@@ -2589,6 +2608,18 @@ async function insertEvent(input) {
     )
     returning *
   `;
+  const location = input.location?.trim();
+  if (location) {
+    const coords = await geocodeAddress(location);
+    if (coords) {
+      await recordShipmentTrailPoint({
+        shipment_id: input.shipment_id,
+        lat: coords[0],
+        lng: coords[1],
+        label: location
+      });
+    }
+  }
   return rows[0] ?? null;
 }
 async function insertContactMessage(input) {
@@ -2765,10 +2796,112 @@ async function handleNotifyShipment(req, res) {
   });
 }
 
+// api/_lib/handlers/route.ts
+var MAX_WAYPOINTS = 25;
+var MAX_HOP_KM = 5e3;
+var CACHE_TTL_MS = 10 * 60 * 1e3;
+var FETCH_TIMEOUT_MS = 8e3;
+var cache2 = /* @__PURE__ */ new Map();
+function haversineKm(aLat, aLng, bLat, bLng) {
+  const toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const s2 = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(s2), Math.sqrt(1 - s2));
+}
+function parseCoords(raw) {
+  const parts = raw.split(";").map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2 || parts.length > MAX_WAYPOINTS) return null;
+  const points = [];
+  for (const part of parts) {
+    const [lngRaw, latRaw] = part.split(",");
+    const lng = Number(lngRaw);
+    const lat = Number(latRaw);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    points.push({ lat, lng });
+  }
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const next = points[i];
+    if (haversineKm(prev.lat, prev.lng, next.lat, next.lng) > MAX_HOP_KM) return null;
+  }
+  return points;
+}
+function pruneCache() {
+  const now = Date.now();
+  for (const [key, entry] of cache2) {
+    if (entry.expiresAt <= now) cache2.delete(key);
+  }
+  while (cache2.size > 80) {
+    const first = cache2.keys().next().value;
+    if (first == null) break;
+    cache2.delete(first);
+  }
+}
+async function handleRoute(req, res) {
+  if (handleOptions(req, res, "GET, OPTIONS")) return;
+  if (req.method !== "GET") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+  const raw = typeof req.query.coords === "string" ? req.query.coords : "";
+  const points = parseCoords(raw);
+  if (!points) {
+    res.status(400).json({ error: "Invalid coords (lng,lat;lng,lat\u2026)" });
+    return;
+  }
+  const cacheKey = points.map((p) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(";");
+  pruneCache();
+  const hit = cache2.get(cacheKey);
+  if (hit && hit.expiresAt > Date.now()) {
+    res.status(200).json(hit.body);
+    return;
+  }
+  const osrmBase = (process.env.OSRM_URL || "https://router.project-osrm.org").replace(/\/$/, "");
+  const path = points.map((p) => `${p.lng},${p.lat}`).join(";");
+  const url = `${osrmBase}/route/v1/driving/${path}?overview=full&geometries=geojson`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" }
+    });
+    if (response.status === 429) {
+      res.status(429).json({ error: "Router busy" });
+      return;
+    }
+    if (!response.ok) {
+      res.status(502).json({ error: "Router failed" });
+      return;
+    }
+    const data = await response.json();
+    const route = data.routes?.[0];
+    const geometry = route?.geometry?.coordinates;
+    if (data.code !== "Ok" || !geometry?.length) {
+      res.status(404).json({ error: "No route" });
+      return;
+    }
+    const body = {
+      coordinates: geometry.map(([lng, lat]) => [lat, lng]),
+      durationSec: typeof route.duration === "number" ? route.duration : null,
+      distanceM: typeof route.distance === "number" ? route.distance : null
+    };
+    cache2.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, body });
+    res.status(200).json(body);
+  } catch (err) {
+    console.error("route", err);
+    res.status(504).json({ error: "Router timeout" });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // api/_lib/handlers/shipments.ts
 var import_zod5 = require("zod");
 var nullableNumber = import_zod5.z.number().finite().nullable().optional();
-var optionalEmail = import_zod5.z.union([import_zod5.z.string().email(), import_zod5.z.literal(""), import_zod5.z.null()]).optional().transform((v) => v === "" || v === void 0 ? null : v);
+var optionalEmail = import_zod5.z.union([import_zod5.z.string().trim().email(), import_zod5.z.literal(""), import_zod5.z.null()]).optional().transform((v) => v === "" || v === void 0 ? null : v);
 var partyFields = {
   sender_name: import_zod5.z.string().optional(),
   sender_phone: import_zod5.z.string().optional(),
@@ -3106,6 +3239,10 @@ async function routeRequest(req, res) {
   }
   if (root === "geocode" && !second) {
     await handleGeocode(req, res);
+    return;
+  }
+  if (root === "route" && !second) {
+    await handleRoute(req, res);
     return;
   }
   if (root === "contact" && !second) {

@@ -62,7 +62,8 @@ export function ShipmentEditModal({ shipment, onClose }: ShipmentEditModalProps)
   useEffect(() => {
     if (shipment) setForm(formFromShipment(shipment));
     else setForm(null);
-  }, [shipment]);
+    // Only hydrate when opening a different shipment so list polling cannot blank emails.
+  }, [shipment?.id]);
 
   if (!shipment || !form) return null;
 

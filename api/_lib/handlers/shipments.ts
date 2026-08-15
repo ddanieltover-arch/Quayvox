@@ -16,7 +16,7 @@ import {
 
 const nullableNumber = z.number().finite().nullable().optional();
 const optionalEmail = z
-  .union([z.string().email(), z.literal(''), z.null()])
+  .union([z.string().trim().email(), z.literal(''), z.null()])
   .optional()
   .transform((v) => (v === '' || v === undefined ? null : v));
 

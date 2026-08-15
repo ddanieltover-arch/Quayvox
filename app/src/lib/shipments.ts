@@ -163,16 +163,21 @@ export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
     updatedAt: String(row.updated_at ?? '').slice(0, 10),
     documents: row.documents ?? [],
     tags: row.tags ?? [],
-    customerEmail: row.customer_email,
+    customerEmail: row.customer_email ?? (row as ShipmentRow & { customerEmail?: string | null }).customerEmail ?? null,
     notes: row.notes,
     itemName: row.item_name ?? '',
     senderName: row.sender_name ?? row.shipper ?? '',
     senderPhone: row.sender_phone ?? '',
-    senderEmail: row.sender_email ?? null,
+    senderEmail:
+      row.sender_email ?? (row as ShipmentRow & { senderEmail?: string | null }).senderEmail ?? null,
     senderAddress,
     receiverName: row.receiver_name ?? row.consignee ?? '',
     receiverPhone: row.receiver_phone ?? '',
-    receiverEmail: row.receiver_email ?? row.customer_email ?? null,
+    receiverEmail:
+      row.receiver_email ??
+      (row as ShipmentRow & { receiverEmail?: string | null }).receiverEmail ??
+      row.customer_email ??
+      null,
     receiverAddress,
     currentAddress: row.current_address ?? null,
     departureAt: row.departure_at ?? null,

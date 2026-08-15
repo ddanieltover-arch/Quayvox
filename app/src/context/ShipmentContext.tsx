@@ -185,6 +185,11 @@ export const ShipmentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
 
         const mapped = mapShipmentRow(data.shipment);
+        if (!mapped.senderEmail && updates.senderEmail) mapped.senderEmail = updates.senderEmail;
+        if (!mapped.receiverEmail && updates.receiverEmail) {
+          mapped.receiverEmail = updates.receiverEmail;
+          mapped.customerEmail = updates.receiverEmail;
+        }
         setShipments((prev) => prev.map((s) => (s.id === id ? mapped : s)));
 
         addNotification({

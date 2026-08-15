@@ -79,25 +79,40 @@ function asNullableDate(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function readNamed(row: Record<string, unknown>, key: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+  if (key in row) return row[key];
+  return undefined;
+}
+
 /** Copy a Neon/pg row by named columns so array-index spreads cannot drop emails. */
 function plainShipmentRow(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {
-    id: row.id,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    id: readNamed(row, 'id'),
+    created_at: readNamed(row, 'created_at'),
+    updated_at: readNamed(row, 'updated_at'),
   };
   for (const key of UPDATE_COLUMNS) {
-    out[key] = row[key];
+    out[key] = readNamed(row, key);
+  }
+  if (row && typeof row === 'object') {
+    for (const [k, v] of Object.entries(row)) {
+      if (!/^\d+$/.test(k) && out[k] === undefined) out[k] = v;
+    }
   }
   return out;
 }
 
-function patchedOrExisting(
+function patchedEmail(
   patch: Record<string, unknown>,
   existing: Record<string, unknown>,
   key: string
-): unknown {
-  return Object.prototype.hasOwnProperty.call(patch, key) ? patch[key] : existing[key];
+): string | null {
+  if (Object.prototype.hasOwnProperty.call(patch, key)) {
+    const next = asNullableString(patch[key]);
+    if (next) return next;
+  }
+  return asNullableString(existing[key]);
 }
 
 /** Fill missing OD coords from the known port lookup when place names match. */
@@ -132,10 +147,10 @@ export async function listShipments() {
   for (const row of rows as Record<string, unknown>[]) {
     // Backfill at most one shipment per list request to stay within serverless limits.
     if (backfilled < 1 && needsGeoEnrichment(row)) {
-      enriched.push(await persistMissingShipmentGeo(row));
+      enriched.push(plainShipmentRow(await persistMissingShipmentGeo(row)));
       backfilled += 1;
     } else {
-      enriched.push(row);
+      enriched.push(plainShipmentRow(row));
     }
   }
 
@@ -218,13 +233,14 @@ export async function persistMissingShipmentGeo(
     });
   }
 
-  return next;
+  return plainShipmentRow(next as Record<string, unknown>);
 }
 
 export async function getShipmentById(id: string) {
   const sql = getSql();
   const rows = await sql`select * from public.shipments where id = ${id} limit 1`;
-  return rows[0] ?? null;
+  const row = rows[0] as Record<string, unknown> | undefined;
+  return row ? plainShipmentRow(row) : null;
 }
 
 export async function getShipmentByTracking(tracking: string) {
@@ -238,7 +254,7 @@ export async function getShipmentByTracking(tracking: string) {
   `;
   const row = (rows[0] as Record<string, unknown> | undefined) ?? null;
   if (!row) return null;
-  return persistMissingShipmentGeo(row);
+  return persistMissingShipmentGeo(plainShipmentRow(row));
 }
 
 export async function getEventsByShipmentId(shipmentId: string) {
@@ -446,7 +462,8 @@ export async function insertShipment(payload: Record<string, unknown>) {
     )
     returning *
   `;
-  return rows[0] ?? null;
+  const created = rows[0] as Record<string, unknown> | undefined;
+  return created ? plainShipmentRow(created) : null;
 }
 
 export async function updateShipment(id: string, patch: Record<string, unknown>) {
@@ -488,14 +505,11 @@ export async function updateShipment(id: string, patch: Record<string, unknown>)
 
   const senderName = asString(withGeo.sender_name ?? withGeo.shipper);
   const receiverName = asString(withGeo.receiver_name ?? withGeo.consignee);
-  const senderEmail = asNullableString(patchedOrExisting(patch, existing, 'sender_email'));
-  const receiverEmail = asNullableString(
-    patchedOrExisting(patch, existing, 'receiver_email') ??
-      patchedOrExisting(patch, existing, 'customer_email')
-  );
-  const customerEmail = asNullableString(
-    patchedOrExisting(patch, existing, 'customer_email') ?? receiverEmail
-  );
+  const senderEmail = patchedEmail(patch, existing, 'sender_email');
+  const receiverEmail =
+    patchedEmail(patch, existing, 'receiver_email') ??
+    patchedEmail(patch, existing, 'customer_email');
+  const customerEmail = patchedEmail(patch, existing, 'customer_email') ?? receiverEmail;
   const senderAddress = asString(withGeo.sender_address ?? withGeo.origin);
   const receiverAddress = asString(withGeo.receiver_address ?? withGeo.destination);
 
@@ -560,7 +574,14 @@ export async function updateShipment(id: string, patch: Record<string, unknown>)
     where id = ${id}
     returning *
   `;
-  return rows[0] ?? null;
+  const saved = rows[0] as Record<string, unknown> | undefined;
+  if (!saved) return null;
+  return {
+    ...plainShipmentRow(saved),
+    sender_email: senderEmail,
+    receiver_email: receiverEmail,
+    customer_email: customerEmail,
+  };
 }
 
 export async function deleteShipment(id: string) {
