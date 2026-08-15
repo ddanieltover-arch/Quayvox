@@ -8,8 +8,9 @@ import {
   getShipmentById,
   insertEvent,
   insertShipment,
-  insertShipmentPosition,
   listShipments,
+  recordShipmentLocationChange,
+  recordShipmentTrailPoint,
   updateShipment,
 } from '../shipments';
 
@@ -163,6 +164,24 @@ export async function handleShipmentsCollection(req: VercelRequest, res: VercelR
         message: 'Shipment created',
       });
 
+      const createdLat = row.current_lat != null ? Number(row.current_lat) : null;
+      const createdLng = row.current_lng != null ? Number(row.current_lng) : null;
+      if (
+        createdLat != null &&
+        createdLng != null &&
+        Number.isFinite(createdLat) &&
+        Number.isFinite(createdLng)
+      ) {
+        await recordShipmentTrailPoint({
+          shipment_id: row.id as string,
+          lat: createdLat,
+          lng: createdLng,
+          label:
+            (typeof row.current_address === 'string' && row.current_address.trim()) ||
+            (typeof row.origin === 'string' ? row.origin : null),
+        });
+      }
+
       const emailResult = await sendShipmentCreatedEmails(row as Record<string, unknown>);
 
       res.status(201).json({
@@ -257,18 +276,15 @@ export async function handleShipmentById(
       const coordsValid = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
       const coordsChanged =
         coordsValid && (beforeLat !== lat || beforeLng !== lng);
-      const addressUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'current_address');
+      const addressTextChanged =
+        String(before.current_address ?? '').trim() !== String(row.current_address ?? '').trim();
 
-      if (coordsValid && (hasCurrentLat || addressUpdated || coordsChanged)) {
-        await insertShipmentPosition({
-          shipment_id: id,
-          lat,
-          lng,
-          label:
-            position_label ??
-            eventLocation ??
-            (typeof row.current_address === 'string' ? row.current_address : null),
-        });
+      if (coordsChanged || addressTextChanged || hasCurrentLat) {
+        await recordShipmentLocationChange(
+          id,
+          before as Record<string, unknown>,
+          row as Record<string, unknown>
+        );
       }
 
       if (eventMessage || parsed.data.status) {

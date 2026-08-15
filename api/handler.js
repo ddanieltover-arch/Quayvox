@@ -2210,6 +2210,20 @@ function asNullableDate(value) {
   const d = new Date(String(value));
   return Number.isNaN(d.getTime()) ? null : d;
 }
+function plainShipmentRow(row) {
+  const out = {
+    id: row.id,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+  for (const key of UPDATE_COLUMNS) {
+    out[key] = row[key];
+  }
+  return out;
+}
+function patchedOrExisting(patch, existing, key) {
+  return Object.prototype.hasOwnProperty.call(patch, key) ? patch[key] : existing[key];
+}
 function resolveGeoDefaults(payload) {
   const next = { ...payload };
   const origin = typeof next.origin === "string" ? next.origin : "";
@@ -2281,7 +2295,7 @@ async function persistMissingShipmentGeo(row) {
     current_lng: currentLng
   };
   if (currentUpdated && currentLat != null && currentLng != null && asNullableString2(row.current_address)) {
-    await insertShipmentPosition({
+    await recordShipmentTrailPoint({
       shipment_id: id,
       lat: currentLat,
       lng: currentLng,
@@ -2320,7 +2334,7 @@ async function getEventsByTracking(tracking) {
     order by e.occurred_at desc
   `;
 }
-async function listShipmentPositions(shipmentId, limit = 50) {
+async function listShipmentPositions(shipmentId, limit = 200) {
   const sql = getSql();
   const capped = Math.min(Math.max(limit, 1), 200);
   return sql`
@@ -2329,6 +2343,9 @@ async function listShipmentPositions(shipmentId, limit = 50) {
     order by recorded_at desc
     limit ${capped}
   `;
+}
+function coordsNear(aLat, aLng, bLat, bLng) {
+  return Math.abs(aLat - bLat) < 15e-5 && Math.abs(aLng - bLng) < 15e-5;
 }
 async function insertShipmentPosition(input) {
   const sql = getSql();
@@ -2344,6 +2361,48 @@ async function insertShipmentPosition(input) {
     returning *
   `;
   return rows[0] ?? null;
+}
+async function recordShipmentTrailPoint(input) {
+  if (!Number.isFinite(input.lat) || !Number.isFinite(input.lng)) return null;
+  const sql = getSql();
+  const lastRows = await sql`
+    select lat, lng from public.shipment_positions
+    where shipment_id = ${input.shipment_id}
+    order by recorded_at desc
+    limit 1
+  `;
+  const last = lastRows[0];
+  if (last && coordsNear(Number(last.lat), Number(last.lng), input.lat, input.lng)) {
+    return last;
+  }
+  return insertShipmentPosition(input);
+}
+async function recordShipmentLocationChange(shipmentId, before, after) {
+  const beforeLat = asNullableNumber2(before.current_lat);
+  const beforeLng = asNullableNumber2(before.current_lng);
+  const afterLat = asNullableNumber2(after.current_lat);
+  const afterLng = asNullableNumber2(after.current_lng);
+  const beforeValid = beforeLat != null && beforeLng != null;
+  const afterValid = afterLat != null && afterLng != null;
+  const coordsChanged = afterValid && (!beforeValid || !coordsNear(beforeLat, beforeLng, afterLat, afterLng));
+  const addressChanged = String(before.current_address ?? "").trim() !== String(after.current_address ?? "").trim();
+  if (!coordsChanged && !addressChanged && beforeValid) return;
+  if (beforeValid && (coordsChanged || addressChanged)) {
+    await recordShipmentTrailPoint({
+      shipment_id: shipmentId,
+      lat: beforeLat,
+      lng: beforeLng,
+      label: asNullableString2(before.current_address)
+    });
+  }
+  if (afterValid) {
+    await recordShipmentTrailPoint({
+      shipment_id: shipmentId,
+      lat: afterLat,
+      lng: afterLng,
+      label: asNullableString2(after.current_address)
+    });
+  }
 }
 async function insertShipment(payload) {
   const sql = getSql();
@@ -2423,8 +2482,9 @@ async function insertShipment(payload) {
   return rows[0] ?? null;
 }
 async function updateShipment(id, patch) {
-  const existing = await getShipmentById(id);
-  if (!existing) return null;
+  const existingRaw = await getShipmentById(id);
+  if (!existingRaw) return null;
+  const existing = plainShipmentRow(existingRaw);
   const merged = { ...existing };
   for (const [key, value] of Object.entries(patch)) {
     if (UPDATE_COLUMNS.has(key)) merged[key] = value;
@@ -2445,7 +2505,13 @@ async function updateShipment(id, patch) {
   }
   const senderName = asString(withGeo.sender_name ?? withGeo.shipper);
   const receiverName = asString(withGeo.receiver_name ?? withGeo.consignee);
-  const receiverEmail = asNullableString2(withGeo.receiver_email ?? withGeo.customer_email);
+  const senderEmail = asNullableString2(patchedOrExisting(patch, existing, "sender_email"));
+  const receiverEmail = asNullableString2(
+    patchedOrExisting(patch, existing, "receiver_email") ?? patchedOrExisting(patch, existing, "customer_email")
+  );
+  const customerEmail = asNullableString2(
+    patchedOrExisting(patch, existing, "customer_email") ?? receiverEmail
+  );
   const senderAddress = asString(withGeo.sender_address ?? withGeo.origin);
   const receiverAddress = asString(withGeo.receiver_address ?? withGeo.destination);
   const sql = getSql();
@@ -2469,12 +2535,12 @@ async function updateShipment(id, patch) {
       consignee = ${receiverName},
       documents = ${withGeo.documents},
       tags = ${withGeo.tags},
-      customer_email = ${receiverEmail},
+      customer_email = ${customerEmail},
       notes = ${asNullableString2(withGeo.notes)},
       item_name = ${asString(withGeo.item_name)},
       sender_name = ${senderName},
       sender_phone = ${asString(withGeo.sender_phone)},
-      sender_email = ${asNullableString2(withGeo.sender_email)},
+      sender_email = ${senderEmail},
       sender_address = ${senderAddress},
       sender_street = ${""},
       sender_city = ${""},
@@ -2835,6 +2901,16 @@ async function handleShipmentsCollection(req, res) {
         location: parsed.data.origin,
         message: "Shipment created"
       });
+      const createdLat = row.current_lat != null ? Number(row.current_lat) : null;
+      const createdLng = row.current_lng != null ? Number(row.current_lng) : null;
+      if (createdLat != null && createdLng != null && Number.isFinite(createdLat) && Number.isFinite(createdLng)) {
+        await recordShipmentTrailPoint({
+          shipment_id: row.id,
+          lat: createdLat,
+          lng: createdLng,
+          label: typeof row.current_address === "string" && row.current_address.trim() || (typeof row.origin === "string" ? row.origin : null)
+        });
+      }
       const emailResult = await sendShipmentCreatedEmails(row);
       res.status(201).json({
         shipment: row,
@@ -2906,14 +2982,13 @@ async function handleShipmentById(req, res, id) {
       const lng = row.current_lng != null ? Number(row.current_lng) : null;
       const coordsValid = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
       const coordsChanged = coordsValid && (beforeLat !== lat || beforeLng !== lng);
-      const addressUpdated = Object.prototype.hasOwnProperty.call(parsed.data, "current_address");
-      if (coordsValid && (hasCurrentLat || addressUpdated || coordsChanged)) {
-        await insertShipmentPosition({
-          shipment_id: id,
-          lat,
-          lng,
-          label: position_label ?? eventLocation ?? (typeof row.current_address === "string" ? row.current_address : null)
-        });
+      const addressTextChanged = String(before.current_address ?? "").trim() !== String(row.current_address ?? "").trim();
+      if (coordsChanged || addressTextChanged || hasCurrentLat) {
+        await recordShipmentLocationChange(
+          id,
+          before,
+          row
+        );
       }
       if (eventMessage || parsed.data.status) {
         await insertEvent({
@@ -2977,7 +3052,7 @@ async function handleTrack(req, res, trackingNumber) {
       return;
     }
     const events = await getEventsByTracking(trimmed);
-    const positions = await listShipmentPositions(shipment.id, 50);
+    const positions = await listShipmentPositions(shipment.id, 200);
     const trail = [...positions].reverse();
     res.status(200).json({ shipment, events, positions: trail });
   } catch (err) {

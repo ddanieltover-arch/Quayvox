@@ -36,7 +36,7 @@ export async function handleTrack(
       return;
     }
     const events = await getEventsByTracking(trimmed);
-    const positions = await listShipmentPositions(shipment.id as string, 50);
+    const positions = await listShipmentPositions(shipment.id as string, 200);
     const trail = [...positions].reverse();
     res.status(200).json({ shipment, events, positions: trail });
   } catch (err) {

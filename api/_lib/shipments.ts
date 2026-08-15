@@ -79,6 +79,27 @@ function asNullableDate(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** Copy a Neon/pg row by named columns so array-index spreads cannot drop emails. */
+function plainShipmentRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    id: row.id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+  for (const key of UPDATE_COLUMNS) {
+    out[key] = row[key];
+  }
+  return out;
+}
+
+function patchedOrExisting(
+  patch: Record<string, unknown>,
+  existing: Record<string, unknown>,
+  key: string
+): unknown {
+  return Object.prototype.hasOwnProperty.call(patch, key) ? patch[key] : existing[key];
+}
+
 /** Fill missing OD coords from the known port lookup when place names match. */
 export function resolveGeoDefaults(payload: Record<string, unknown>): Record<string, unknown> {
   const next = { ...payload };
@@ -189,7 +210,7 @@ export async function persistMissingShipmentGeo(
     currentLng != null &&
     asNullableString(row.current_address)
   ) {
-    await insertShipmentPosition({
+    await recordShipmentTrailPoint({
       shipment_id: id,
       lat: currentLat,
       lng: currentLng,
@@ -242,7 +263,7 @@ export async function getEventsByTracking(tracking: string) {
   `;
 }
 
-export async function listShipmentPositions(shipmentId: string, limit = 50) {
+export async function listShipmentPositions(shipmentId: string, limit = 200) {
   const sql = getSql();
   const capped = Math.min(Math.max(limit, 1), 200);
   return sql`
@@ -251,6 +272,15 @@ export async function listShipmentPositions(shipmentId: string, limit = 50) {
     order by recorded_at desc
     limit ${capped}
   `;
+}
+
+function coordsNear(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number
+): boolean {
+  return Math.abs(aLat - bLat) < 0.00015 && Math.abs(aLng - bLng) < 0.00015;
 }
 
 export async function insertShipmentPosition(input: {
@@ -273,6 +303,68 @@ export async function insertShipmentPosition(input: {
     returning *
   `;
   return rows[0] ?? null;
+}
+
+/** Keep every distinct stop on the trail; skip an immediate duplicate of the last pin. */
+export async function recordShipmentTrailPoint(input: {
+  shipment_id: string;
+  lat: number;
+  lng: number;
+  label?: string | null;
+}) {
+  if (!Number.isFinite(input.lat) || !Number.isFinite(input.lng)) return null;
+  const sql = getSql();
+  const lastRows = await sql`
+    select lat, lng from public.shipment_positions
+    where shipment_id = ${input.shipment_id}
+    order by recorded_at desc
+    limit 1
+  `;
+  const last = lastRows[0] as { lat: number; lng: number } | undefined;
+  if (
+    last &&
+    coordsNear(Number(last.lat), Number(last.lng), input.lat, input.lng)
+  ) {
+    return last;
+  }
+  return insertShipmentPosition(input);
+}
+
+export async function recordShipmentLocationChange(
+  shipmentId: string,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
+) {
+  const beforeLat = asNullableNumber(before.current_lat);
+  const beforeLng = asNullableNumber(before.current_lng);
+  const afterLat = asNullableNumber(after.current_lat);
+  const afterLng = asNullableNumber(after.current_lng);
+  const beforeValid = beforeLat != null && beforeLng != null;
+  const afterValid = afterLat != null && afterLng != null;
+  const coordsChanged =
+    afterValid && (!beforeValid || !coordsNear(beforeLat, beforeLng, afterLat, afterLng));
+  const addressChanged =
+    String(before.current_address ?? '').trim() !== String(after.current_address ?? '').trim();
+
+  if (!coordsChanged && !addressChanged && beforeValid) return;
+
+  if (beforeValid && (coordsChanged || addressChanged)) {
+    await recordShipmentTrailPoint({
+      shipment_id: shipmentId,
+      lat: beforeLat,
+      lng: beforeLng,
+      label: asNullableString(before.current_address),
+    });
+  }
+
+  if (afterValid) {
+    await recordShipmentTrailPoint({
+      shipment_id: shipmentId,
+      lat: afterLat,
+      lng: afterLng,
+      label: asNullableString(after.current_address),
+    });
+  }
 }
 
 export async function insertShipment(payload: Record<string, unknown>) {
@@ -358,9 +450,10 @@ export async function insertShipment(payload: Record<string, unknown>) {
 }
 
 export async function updateShipment(id: string, patch: Record<string, unknown>) {
-  const existing = (await getShipmentById(id)) as Record<string, unknown> | null;
-  if (!existing) return null;
+  const existingRaw = (await getShipmentById(id)) as Record<string, unknown> | null;
+  if (!existingRaw) return null;
 
+  const existing = plainShipmentRow(existingRaw);
   const merged: Record<string, unknown> = { ...existing };
   for (const [key, value] of Object.entries(patch)) {
     if (UPDATE_COLUMNS.has(key)) merged[key] = value;
@@ -395,7 +488,14 @@ export async function updateShipment(id: string, patch: Record<string, unknown>)
 
   const senderName = asString(withGeo.sender_name ?? withGeo.shipper);
   const receiverName = asString(withGeo.receiver_name ?? withGeo.consignee);
-  const receiverEmail = asNullableString(withGeo.receiver_email ?? withGeo.customer_email);
+  const senderEmail = asNullableString(patchedOrExisting(patch, existing, 'sender_email'));
+  const receiverEmail = asNullableString(
+    patchedOrExisting(patch, existing, 'receiver_email') ??
+      patchedOrExisting(patch, existing, 'customer_email')
+  );
+  const customerEmail = asNullableString(
+    patchedOrExisting(patch, existing, 'customer_email') ?? receiverEmail
+  );
   const senderAddress = asString(withGeo.sender_address ?? withGeo.origin);
   const receiverAddress = asString(withGeo.receiver_address ?? withGeo.destination);
 
@@ -420,12 +520,12 @@ export async function updateShipment(id: string, patch: Record<string, unknown>)
       consignee = ${receiverName},
       documents = ${withGeo.documents as string[]},
       tags = ${withGeo.tags as string[]},
-      customer_email = ${receiverEmail},
+      customer_email = ${customerEmail},
       notes = ${asNullableString(withGeo.notes)},
       item_name = ${asString(withGeo.item_name)},
       sender_name = ${senderName},
       sender_phone = ${asString(withGeo.sender_phone)},
-      sender_email = ${asNullableString(withGeo.sender_email)},
+      sender_email = ${senderEmail},
       sender_address = ${senderAddress},
       sender_street = ${''},
       sender_city = ${''},

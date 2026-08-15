@@ -191,34 +191,48 @@ function escapeHtml(value: string): string {
 }
 
 function createMarkerIcon(
-  kind: 'origin' | 'destination' | 'current',
+  kind: 'origin' | 'destination' | 'current' | 'history',
   selected: boolean,
   onHold = false
 ): L.DivIcon {
-  const holdCurrent = kind === 'current' && onHold;
+  const live = kind === 'current';
+  const holdCurrent = live && onHold;
   const classes = [
     'qv-map-marker',
     holdCurrent
       ? 'qv-map-marker--hold'
-      : kind === 'current'
+      : live
         ? 'qv-map-marker--current'
         : kind === 'origin'
           ? 'qv-map-marker--origin'
-          : 'qv-map-marker--destination',
+          : kind === 'history'
+            ? 'qv-map-marker--history'
+            : 'qv-map-marker--destination',
     selected ? 'qv-map-marker--selected' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
-  const html = holdCurrent
-    ? `<button type="button" class="${classes}" aria-label="On hold"><span class="qv-map-marker__bang">!</span></button>`
-    : `<button type="button" class="${classes}" aria-hidden="true"></button>`;
+  if (live) {
+    const pingClass = holdCurrent ? 'qv-map-live__ping qv-map-live__ping--hold' : 'qv-map-live__ping';
+    const core = holdCurrent
+      ? `<button type="button" class="${classes}" aria-label="Latest location on hold"><span class="qv-map-marker__bang">!</span></button>`
+      : `<button type="button" class="${classes}" aria-label="Latest location"></button>`;
+    const html = `<span class="qv-map-live">${core}<span class="${pingClass}"></span><span class="${pingClass} qv-map-live__ping--delay"></span></span>`;
+    return L.divIcon({
+      className: 'qv-map-live-icon',
+      html,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+    });
+  }
 
+  const size = kind === 'history' ? 10 : 12;
   return L.divIcon({
     className: '',
-    html,
-    iconSize: kind === 'current' ? (holdCurrent ? [22, 22] : [16, 16]) : [12, 12],
-    iconAnchor: kind === 'current' ? (holdCurrent ? [11, 11] : [8, 8]) : [6, 6],
+    html: `<button type="button" class="${classes}" aria-hidden="true"></button>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -558,7 +572,7 @@ export function ShipmentMap({
       const addMarker = (
         lat: number,
         lng: number,
-        kind: 'origin' | 'destination' | 'current',
+        kind: 'origin' | 'destination' | 'current' | 'history',
         label: string
       ) => {
         let startLat = lat;
@@ -576,7 +590,8 @@ export function ShipmentMap({
         const marker = L.marker([startLat, startLng], {
           icon: createMarkerIcon(kind, s.id === selectedId, isOnHold),
           keyboard: false,
-          zIndexOffset: kind === 'current' && isOnHold ? 600 : kind === 'current' ? 400 : 0,
+          zIndexOffset:
+            kind === 'current' && isOnHold ? 600 : kind === 'current' ? 400 : kind === 'history' ? 200 : 0,
         })
           .bindPopup(
             `<div style="font:12px/1.4 system-ui,sans-serif;color:#0B1020">
@@ -606,13 +621,24 @@ export function ShipmentMap({
       if (origin) addMarker(origin[0], origin[1], 'origin', 'Origin');
       if (destination) addMarker(destination[0], destination[1], 'destination', 'Destination');
       const current = resolveDisplayPosition(s);
+      const trail = (s.positions ?? []).filter((p) => isValidCoord(p.lat, p.lng));
+      for (const point of trail) {
+        const sameAsCurrent =
+          current != null &&
+          Math.abs(point.lat - current[0]) < 0.00015 &&
+          Math.abs(point.lng - current[1]) < 0.00015;
+        if (sameAsCurrent) continue;
+        addMarker(point.lat, point.lng, 'history', point.label?.trim() || 'Previous location');
+      }
       if (current) {
         seenCurrentIds.add(s.id);
         addMarker(
           current[0],
           current[1],
           'current',
-          s.currentAddress?.trim() || 'Current position'
+          s.currentAddress?.trim()
+            ? `Latest update — ${s.currentAddress.trim()}`
+            : 'Latest update'
         );
         prevCurrentPositionsRef.current.set(s.id, [current[0], current[1]]);
       }
@@ -643,7 +669,7 @@ export function ShipmentMap({
     const fitKey = `${selectedId ?? 'all'}:${geoShipments
       .map((s) => {
         const cur = resolveDisplayPosition(s);
-        return `${s.id}:${s.progress}:${cur?.[0] ?? ''}:${cur?.[1] ?? ''}:${s.currentAddress ?? ''}`;
+        return `${s.id}:${s.progress}:${cur?.[0] ?? ''}:${cur?.[1] ?? ''}:${s.currentAddress ?? ''}:${(s.positions ?? []).length}`;
       })
       .join('|')}`;
 
@@ -776,22 +802,65 @@ export function ShipmentMap({
           padding: 0;
           display: block;
         }
+        .qv-map-live-icon {
+          overflow: visible !important;
+          background: none !important;
+          border: none !important;
+        }
+        .qv-map-live {
+          position: relative;
+          display: block;
+          width: 44px;
+          height: 44px;
+        }
+        .qv-map-live .qv-map-marker {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 2;
+        }
+        .qv-map-live__ping {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 44px;
+          height: 44px;
+          margin: -22px 0 0 -22px;
+          border-radius: 9999px;
+          border: 2px solid rgba(79, 109, 245, 0.95);
+          box-sizing: border-box;
+          animation: qv-map-beep 1.6s ease-out infinite;
+          pointer-events: none;
+        }
+        .qv-map-live__ping--hold {
+          border-color: rgba(239, 68, 68, 0.95);
+        }
+        .qv-map-live__ping--delay {
+          animation-delay: 0.8s;
+        }
         .qv-map-marker--origin { background: #94A3B8; }
         .qv-map-marker--destination { background: #22C55E; }
+        .qv-map-marker--history {
+          width: 10px;
+          height: 10px;
+          background: #F59E0B;
+          border: 2px solid #0B1020;
+          box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.28);
+        }
         .qv-map-marker--current {
-          width: 16px;
-          height: 16px;
+          width: 20px;
+          height: 20px;
           background: #4F6DF5;
-          box-shadow: 0 0 0 4px rgba(79, 109, 245, 0.35);
-          animation: qv-map-marker-pulse 2.2s ease-out infinite;
+          border: 3px solid #F4F6FF;
+          box-shadow: 0 0 0 3px rgba(79, 109, 245, 0.45);
         }
         .qv-map-marker--hold {
-          width: 22px;
-          height: 22px;
+          width: 24px;
+          height: 24px;
           background: #DC2626;
-          border: 2px solid #FEE2E2;
-          box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.4);
-          animation: qv-map-marker-hold-pulse 1.4s ease-out infinite;
+          border: 3px solid #FEE2E2;
+          box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.45);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -805,26 +874,14 @@ export function ShipmentMap({
           outline: 2px solid #fff;
           outline-offset: 2px;
         }
-        @keyframes qv-map-marker-pulse {
+        @keyframes qv-map-beep {
           0% {
-            box-shadow: 0 0 0 3px rgba(79, 109, 245, 0.45);
-          }
-          70% {
-            box-shadow: 0 0 0 14px rgba(79, 109, 245, 0);
+            transform: scale(0.28);
+            opacity: 0.9;
           }
           100% {
-            box-shadow: 0 0 0 3px rgba(79, 109, 245, 0);
-          }
-        }
-        @keyframes qv-map-marker-hold-pulse {
-          0% {
-            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.55);
-          }
-          70% {
-            box-shadow: 0 0 0 16px rgba(220, 38, 38, 0);
-          }
-          100% {
-            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0);
+            transform: scale(1);
+            opacity: 0;
           }
         }
         @keyframes qv-map-route-flow {
@@ -836,13 +893,10 @@ export function ShipmentMap({
           animation: qv-map-route-flow 1.8s linear infinite;
         }
         @media (prefers-reduced-motion: reduce) {
-          .qv-map-marker--current {
+          .qv-map-live__ping {
             animation: none;
-            box-shadow: 0 0 0 4px rgba(79, 109, 245, 0.35);
-          }
-          .qv-map-marker--hold {
-            animation: none;
-            box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.45);
+            opacity: 0.45;
+            transform: scale(0.7);
           }
           .qv-map-route--flow {
             animation: none;

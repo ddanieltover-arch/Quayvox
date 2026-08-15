@@ -68,10 +68,7 @@ export function ShipmentStatusUpdateModal({
         status: form.status,
         progress: form.progress,
         eta: form.eta || '',
-        currentAddress: nextAddress || null,
-        senderEmail: shipment.senderEmail || null,
-        receiverEmail: shipment.receiverEmail || shipment.customerEmail || null,
-        customerEmail: shipment.customerEmail || shipment.receiverEmail || null,
+        ...(addressChanged ? { currentAddress: nextAddress || null } : {}),
       },
       {
         eventMessage:
