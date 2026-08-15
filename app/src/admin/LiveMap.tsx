@@ -208,8 +208,9 @@ const LiveMap = () => {
 
         <div className="relative min-h-[320px] flex flex-col gap-3">
           <div className="relative flex-1 min-h-[320px]">
-            <MapErrorBoundary>
+            <MapErrorBoundary resetKey={`${mapType}-${satelliteLabels}`}>
               <ShipmentMap
+                key={mapType}
                 shipments={mapShipments}
                 selectedId={selectedId}
                 onSelect={setSelectedId}

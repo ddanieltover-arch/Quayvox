@@ -70,60 +70,79 @@ function applyBasemapTiles(
 
   tileFallbackRef.current = useFallback ? 1 : 0;
   let tileErrors = 0;
+  let swappedToFallback = false;
 
-  if (tileLayerRef.current) {
-    map.removeLayer(tileLayerRef.current);
-    tileLayerRef.current = null;
-  }
-  for (const overlay of overlayLayersRef.current) {
-    map.removeLayer(overlay);
-  }
-  overlayLayersRef.current = [];
-
-  const layer = L.tileLayer(source.url, {
-    attribution: source.attribution,
-    subdomains: source.subdomains,
-    maxZoom: source.maxZoom ?? 19,
-  });
-
-  layer.on('tileerror', () => {
-    tileErrors += 1;
-    if (!useFallback && tileErrors >= 3 && config.fallback) {
-      applyBasemapTiles(
-        map,
-        basemap,
-        satelliteLabels,
-        tileLayerRef,
-        overlayLayersRef,
-        tileFallbackRef,
-        setMapError,
-        true
-      );
-    } else if (tileErrors >= 3) {
-      setMapError('Map tiles failed to load');
+  try {
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current);
+      tileLayerRef.current = null;
     }
-  });
+    const previousOverlays = Array.isArray(overlayLayersRef.current) ? overlayLayersRef.current : [];
+    for (const overlay of previousOverlays) {
+      try {
+        map.removeLayer(overlay);
+      } catch {
+        /* layer already gone */
+      }
+    }
+    overlayLayersRef.current = [];
 
-  layer.addTo(map);
-  tileLayerRef.current = layer;
+    const layerOptions: L.TileLayerOptions = {
+      attribution: source.attribution,
+      maxZoom: source.maxZoom ?? 19,
+    };
+    if (source.subdomains) layerOptions.subdomains = source.subdomains;
 
-  const overlayConfigs =
-    basemap === 'satellite' && satelliteLabels && !useFallback
-      ? config.overlays ?? (config.labelsOverlay ? [config.labelsOverlay] : [])
-      : [];
+    const layer = L.tileLayer(source.url, layerOptions);
 
-  for (const overlayConfig of overlayConfigs) {
-    const overlay = L.tileLayer(overlayConfig.url, {
-      attribution: overlayConfig.attribution,
-      subdomains: overlayConfig.subdomains,
-      maxZoom: overlayConfig.maxZoom ?? 19,
-      pane: 'overlayPane',
+    layer.on('tileerror', () => {
+      if (swappedToFallback) return;
+      tileErrors += 1;
+      if (!useFallback && tileErrors >= 6 && config.fallback) {
+        swappedToFallback = true;
+        applyBasemapTiles(
+          map,
+          basemap,
+          satelliteLabels,
+          tileLayerRef,
+          overlayLayersRef,
+          tileFallbackRef,
+          setMapError,
+          true
+        );
+      }
     });
-    overlay.addTo(map);
-    overlayLayersRef.current.push(overlay);
-  }
 
-  setMapError(null);
+    layer.addTo(map);
+    tileLayerRef.current = layer;
+
+    const overlayConfigs =
+      basemap === 'satellite' && satelliteLabels && !useFallback
+        ? config.overlays ?? (config.labelsOverlay ? [config.labelsOverlay] : [])
+        : [];
+
+    for (const overlayConfig of overlayConfigs) {
+      try {
+        const overlayOptions: L.TileLayerOptions = {
+          attribution: overlayConfig.attribution,
+          maxZoom: overlayConfig.maxZoom ?? 19,
+          pane: 'overlayPane',
+          opacity: 0.92,
+        };
+        if (overlayConfig.subdomains) overlayOptions.subdomains = overlayConfig.subdomains;
+        const overlay = L.tileLayer(overlayConfig.url, overlayOptions);
+        overlay.addTo(map);
+        overlayLayersRef.current.push(overlay);
+      } catch (err) {
+        console.warn('map overlay failed', err);
+      }
+    }
+
+    setMapError(null);
+  } catch (err) {
+    console.error('map tiles', err);
+    setMapError('Map tiles failed to load');
+  }
 }
 
 /** Allow close clusters to zoom in; wide routes still fit naturally. */
@@ -392,7 +411,7 @@ function smoothCurve(points: L.LatLngExpression[]): L.LatLngExpression[] {
   for (let i = 0; i < points.length - 1; i += 1) {
     const a = points[i] as GeoCoord;
     const b = points[i + 1] as GeoCoord;
-    const segment = geodesicSegment(a, b);
+    const segment = geodesicSegment(a, b).filter((point) => isValidCoord(point[0], point[1]));
     if (i > 0) segment.shift();
     out.push(...segment);
   }

@@ -195,8 +195,9 @@ const TrackResult = () => {
             </div>
             {hasMapGeo && mapShipment ? (
               <div className="relative mx-5 sm:mx-6 mb-5 sm:mb-6">
-                <MapErrorBoundary>
+                <MapErrorBoundary resetKey={`${mapType}-${satelliteLabels}`}>
                   <ShipmentMap
+                    key={mapType}
                     shipments={[mapShipment]}
                     showPorts={showPorts}
                     basemap={mapType}

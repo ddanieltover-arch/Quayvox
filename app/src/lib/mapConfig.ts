@@ -64,9 +64,10 @@ export const SATELLITE_LABELS_OVERLAY: MapTileLayerConfig = {
   maxZoom: 20,
 };
 
-const ESRI_TRANSPORTATION: MapTileLayerConfig = {
-  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
-  attribution: 'Tiles &copy; Esri',
+const ESRI_IMAGERY: MapTileLayerConfig = {
+  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  attribution:
+    'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
   maxZoom: 19,
 };
 
@@ -91,13 +92,12 @@ export const MAP_BASEMAPS: Record<MapBasemapId, MapBasemapConfig> = {
   satellite: {
     id: 'satellite',
     label: 'Satellite',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution:
-      'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-    maxZoom: 19,
+    url: ESRI_IMAGERY.url,
+    attribution: ESRI_IMAGERY.attribution,
+    maxZoom: ESRI_IMAGERY.maxZoom,
     fallback: OSM_FALLBACK,
     labelsOverlay: SATELLITE_LABELS_OVERLAY,
-    overlays: [ESRI_TRANSPORTATION, SATELLITE_LABELS_OVERLAY],
+    overlays: [SATELLITE_LABELS_OVERLAY],
   },
   terrain: {
     id: 'terrain',

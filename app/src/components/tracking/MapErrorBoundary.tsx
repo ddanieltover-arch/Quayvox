@@ -1,14 +1,21 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
-type Props = { children: ReactNode; fallback?: ReactNode };
+type Props = { children: ReactNode; fallback?: ReactNode; resetKey?: string | number };
 
-type State = { failed: boolean };
+type State = { failed: boolean; resetKey?: string | number };
 
 export class MapErrorBoundary extends Component<Props, State> {
-  state: State = { failed: false };
+  state: State = { failed: false, resetKey: this.props.resetKey };
 
-  static getDerivedStateFromError(): State {
+  static getDerivedStateFromError(): Partial<State> {
     return { failed: true };
+  }
+
+  static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
+    if (props.resetKey !== state.resetKey) {
+      return { failed: false, resetKey: props.resetKey };
+    }
+    return null;
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
