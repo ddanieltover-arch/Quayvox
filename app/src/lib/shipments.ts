@@ -208,8 +208,8 @@ export type MapEventStop = {
 };
 
 /** Unique timeline addresses, oldest first — used as map pins. */
-export function mapStopsFromEvents(events: ShipmentEvent[]): MapEventStop[] {
-  const chronological = [...events].sort(
+export function mapStopsFromEvents(events: ShipmentEvent[] | null | undefined): MapEventStop[] {
+  const chronological = [...(events ?? [])].sort(
     (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
   );
   const stops: MapEventStop[] = [];

@@ -56,6 +56,10 @@ function applyBasemapTiles(
   useFallback: boolean
 ) {
   const config = MAP_BASEMAPS[basemap];
+  if (!config) {
+    setMapError('Map tiles failed to load');
+    return;
+  }
   const source = useFallback ? config.fallback ?? MAP_TILE_LAYERS[MAP_TILE_LAYERS.length - 1] : config;
   if (!source) {
     setMapError('Map tiles failed to load');
@@ -142,6 +146,10 @@ function padTinyBounds(bounds: L.LatLngBounds): L.LatLngBounds {
   );
 }
 
+function stopLabel(stop: { label?: string | null } | null | undefined): string {
+  return typeof stop?.label === 'string' ? stop.label.trim() : '';
+}
+
 function coordsClose(
   aLat: number,
   aLng: number,
@@ -172,7 +180,7 @@ function uniqueGeocodedStops(s: MapShipmentGeo): Array<{
     const lng = stop.lng as number;
     const last = out[out.length - 1];
     if (last && coordsClose(last.lat, last.lng, lat, lng)) {
-      last.label = stop.label.trim() || last.label;
+      last.label = stopLabel(stop) || last.label;
       last.status = stop.status ?? last.status;
       last.message = stop.message ?? last.message;
       continue;
@@ -180,7 +188,7 @@ function uniqueGeocodedStops(s: MapShipmentGeo): Array<{
     out.push({
       lat,
       lng,
-      label: stop.label.trim() || 'Stop',
+      label: stopLabel(stop) || 'Stop',
       status: stop.status,
       message: stop.message,
     });
@@ -254,7 +262,7 @@ function shipmentHasAddress(s: MapShipmentGeo): boolean {
     s.origin?.trim() ||
       s.destination?.trim() ||
       s.currentAddress?.trim() ||
-      (s.stops ?? []).some((stop) => stop.label.trim())
+      (s.stops ?? []).some((stop) => stopLabel(stop))
   );
 }
 
@@ -292,11 +300,11 @@ async function resolveShipmentGeo(s: MapShipmentGeo): Promise<MapShipmentGeo> {
   if (next.stops?.length) {
     const resolvedStops: MapStopGeo[] = [];
     for (const stop of next.stops) {
-      if (isValidCoord(stop.lat, stop.lng) || !stop.label.trim()) {
+      if (isValidCoord(stop.lat, stop.lng) || !stopLabel(stop)) {
         resolvedStops.push(stop);
         continue;
       }
-      const coords = await geocodeAddressClient(stop.label);
+      const coords = await geocodeAddressClient(stopLabel(stop));
       resolvedStops.push(
         coords ? { ...stop, lat: coords[0], lng: coords[1] } : stop
       );
@@ -547,7 +555,7 @@ export function ShipmentMap({
         (!isValidCoord(s.originLat, s.originLng) && Boolean(s.origin?.trim())) ||
         (!isValidCoord(s.destinationLat, s.destinationLng) && Boolean(s.destination?.trim())) ||
         (!isValidCoord(s.currentLat, s.currentLng) && Boolean(s.currentAddress?.trim())) ||
-        (s.stops ?? []).some((stop) => Boolean(stop.label.trim()) && !isValidCoord(stop.lat, stop.lng))
+        (s.stops ?? []).some((stop) => Boolean(stopLabel(stop)) && !isValidCoord(stop.lat, stop.lng))
     );
 
     if (!needsLookup) {

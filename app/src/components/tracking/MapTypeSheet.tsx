@@ -92,16 +92,18 @@ export function MapLayersControl({
         <Layers className="w-4 h-4 text-cobalt" />
         Map type
       </button>
-      <MapTypeSheet
-        open={layersOpen}
-        onOpenChange={onLayersOpenChange}
-        mapType={mapType}
-        onMapTypeChange={onMapTypeChange}
-        satelliteLabels={satelliteLabels}
-        onSatelliteLabelsChange={onSatelliteLabelsChange}
-        showPorts={showPorts}
-        onShowPortsChange={onShowPortsChange}
-      />
+      {layersOpen ? (
+        <MapTypeSheet
+          open
+          onOpenChange={onLayersOpenChange}
+          mapType={mapType}
+          onMapTypeChange={onMapTypeChange}
+          satelliteLabels={satelliteLabels}
+          onSatelliteLabelsChange={onSatelliteLabelsChange}
+          showPorts={showPorts}
+          onShowPortsChange={onShowPortsChange}
+        />
+      ) : null}
     </>
   );
 }
@@ -183,7 +185,7 @@ export function MapTypeSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="border-white/10 bg-navy-800 sm:mx-auto sm:max-w-md sm:rounded-t-[28px] gap-0 pb-6"
+        className="border-white/10 bg-navy-800 sm:mx-auto sm:max-w-md sm:rounded-t-[28px] gap-0 pb-6 z-[1100]"
       >
         <SheetHeader className="pb-2">
           <SheetTitle className="font-display text-lg text-text-primary">Map type</SheetTitle>
