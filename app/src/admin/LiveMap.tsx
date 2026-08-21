@@ -18,6 +18,19 @@ import {
   type ShipmentPositionRow,
 } from '@/lib/shipments';
 
+function latestHoldAlertMessage(
+  status: string,
+  notes?: string | null,
+  stops?: Array<{ status?: string | null; message?: string | null }>,
+  fetched?: string | null
+): string | undefined {
+  if (status !== 'On Hold') return undefined;
+  const fromStops = [...(stops ?? [])]
+    .reverse()
+    .find((stop) => stop.message?.trim() && (stop.status === 'On Hold' || Boolean(stop.message?.trim())));
+  return fromStops?.message?.trim() || fetched?.trim() || notes?.trim() || undefined;
+}
+
 const LiveMap = () => {
   const { shipments, refreshShipments, loading } = useShipments();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -34,6 +47,7 @@ const LiveMap = () => {
   const [positions, setPositions] = useState<ShipmentPosition[]>([]);
   const [eventStops, setEventStops] = useState<ReturnType<typeof mapStopsFromEvents>>([]);
   const [lastPoll, setLastPoll] = useState<number | null>(null);
+  const [holdAlerts, setHoldAlerts] = useState<Record<string, string>>({});
 
   const activeShipments = useMemo(
     () =>
@@ -107,6 +121,44 @@ const LiveMap = () => {
     };
   }, [selectedId, shipments]);
 
+  useEffect(() => {
+    const held = activeShipments.filter((s) => s.status === 'On Hold');
+    if (held.length === 0) {
+      setHoldAlerts({});
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      held.map(async (s) => {
+        try {
+          const res = await fetch(`/api/track/${encodeURIComponent(s.trackingNumber)}`);
+          if (!res.ok) return [s.id, ''] as const;
+          const data = (await res.json()) as { events?: ShipmentEventRow[] };
+          const events = (data.events ?? []).map(mapEventRow);
+          const holdEvent = [...events]
+            .reverse()
+            .find((event) => event.status === 'On Hold' && event.message?.trim());
+          const latest = holdEvent ?? [...events].reverse().find((event) => event.message?.trim());
+          return [s.id, latest?.message?.trim() || ''] as const;
+        } catch {
+          return [s.id, ''] as const;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const [id, message] of entries) {
+        if (message) next[id] = message;
+      }
+      setHoldAlerts(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeShipments]);
+
   const mapShipments: MapShipmentGeo[] = useMemo(
     () =>
       activeShipments.map((s) => ({
@@ -124,10 +176,17 @@ const LiveMap = () => {
         currentLng: s.currentLng,
         currentAddress: s.currentAddress,
         mode: s.mode,
+        itemName: s.itemName,
+        alertMessage: latestHoldAlertMessage(
+          s.status,
+          s.notes,
+          s.id === selectedId ? eventStops : undefined,
+          holdAlerts[s.id]
+        ),
         positions: s.id === selectedId ? positions : undefined,
         stops: s.id === selectedId ? eventStops : undefined,
       })),
-    [activeShipments, positions, eventStops, selectedId]
+    [activeShipments, positions, eventStops, selectedId, holdAlerts]
   );
 
   const selected = activeShipments.find((s) => s.id === selectedId) ?? null;
@@ -176,7 +235,9 @@ const LiveMap = () => {
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono text-sm text-cobalt">{s.trackingNumber}</span>
                       <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full border ${getStatusColor(s.status)}`}
+                        className={`text-[10px] px-2 py-0.5 rounded-full border ${getStatusColor(s.status)} ${
+                          s.status === 'On Hold' ? 'animate-pulse' : ''
+                        }`}
                       >
                         {s.status}
                       </span>

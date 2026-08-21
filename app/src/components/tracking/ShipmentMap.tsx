@@ -31,6 +31,9 @@ export interface MapShipmentGeo {
   currentLat?: number | null;
   currentLng?: number | null;
   mode?: string;
+  itemName?: string | null;
+  /** Hold/exception copy shown on the map without opening a popup. */
+  alertMessage?: string | null;
   positions?: ShipmentPosition[];
   /** Timeline addresses to pin even when the GPS trail is incomplete. */
   stops?: MapStopGeo[];
@@ -448,13 +451,70 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function truncateText(value: string, max = 72): string {
+  const text = value.trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
+}
+
+function holdAlertHtml(opts: {
+  trackingNumber: string;
+  itemName?: string | null;
+  locationLabel?: string | null;
+  alertMessage?: string | null;
+}): string {
+  const item = opts.itemName?.trim();
+  const location = opts.locationLabel?.trim().replace(/^Latest update — /i, '') ?? '';
+  const message = opts.alertMessage?.trim() ?? '';
+  const rows = [
+    '<span class="qv-map-hold-alert__title">On Hold</span>',
+    `<span class="qv-map-hold-alert__id">${escapeHtml(opts.trackingNumber)}</span>`,
+    item ? `<span class="qv-map-hold-alert__item">${escapeHtml(truncateText(item, 42))}</span>` : '',
+    location
+      ? `<span class="qv-map-hold-alert__loc">${escapeHtml(truncateText(location, 48))}</span>`
+      : '',
+    message
+      ? `<span class="qv-map-hold-alert__msg">${escapeHtml(truncateText(message, 90))}</span>`
+      : '<span class="qv-map-hold-alert__msg">Action required — transit paused</span>',
+  ]
+    .filter(Boolean)
+    .join('');
+
+  return `<span class="qv-map-hold-alert" aria-hidden="true"><span class="qv-map-hold-alert__led"></span><span class="qv-map-hold-alert__body">${rows}</span></span>`;
+}
+
+const ENDPOINT_FACTORY_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/></svg>';
+
+const ENDPOINT_HOUSE_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+
+function createEndpointIcon(kind: 'origin' | 'destination', selected: boolean): L.DivIcon {
+  const label = kind === 'origin' ? 'Sender address' : 'Receiver address';
+  const svg = kind === 'origin' ? ENDPOINT_FACTORY_SVG : ENDPOINT_HOUSE_SVG;
+  const selectedClass = selected ? ' qv-map-endpoint--selected' : '';
+  return L.divIcon({
+    className: 'qv-map-endpoint-icon',
+    html: `<span class="qv-map-endpoint qv-map-endpoint--${kind}${selectedClass}"><button type="button" class="qv-map-endpoint__badge" aria-label="${label}">${svg}</button><span class="qv-map-endpoint__pointer" aria-hidden="true"></span></span>`,
+    iconSize: [36, 42],
+    iconAnchor: [18, 42],
+    popupAnchor: [0, -38],
+  });
+}
+
 function createMarkerIcon(
   kind: 'origin' | 'destination' | 'current' | 'history',
   selected: boolean,
-  onHold = false
+  options: {
+    onHold?: boolean;
+    trackingNumber?: string;
+    itemName?: string | null;
+    locationLabel?: string | null;
+    alertMessage?: string | null;
+  } = {}
 ): L.DivIcon {
   const live = kind === 'current';
-  const holdCurrent = live && onHold;
+  const holdCurrent = live && Boolean(options.onHold);
   const classes = [
     'qv-map-marker',
     holdCurrent
@@ -473,12 +533,29 @@ function createMarkerIcon(
 
   if (live) {
     const pingClass = holdCurrent ? 'qv-map-live__ping qv-map-live__ping--hold' : 'qv-map-live__ping';
+    const tracking = options.trackingNumber?.trim() || 'shipment';
+    const holdLabelParts = [
+      `On hold: ${tracking}`,
+      options.itemName?.trim(),
+      options.alertMessage?.trim() || (holdCurrent ? 'Action required — transit paused' : ''),
+    ].filter(Boolean);
     const core = holdCurrent
-      ? `<button type="button" class="${classes}" aria-label="Latest location on hold"><span class="qv-map-marker__bang">!</span></button>`
+      ? `<button type="button" class="${classes}" aria-label="${escapeHtml(holdLabelParts.join('. '))}"><span class="qv-map-marker__bang">!</span></button>`
       : `<button type="button" class="${classes}" aria-label="Latest location"></button>`;
-    const html = `<span class="qv-map-live">${core}<span class="${pingClass}"></span><span class="${pingClass} qv-map-live__ping--delay"></span></span>`;
+    const callout = holdCurrent
+      ? holdAlertHtml({
+          trackingNumber: tracking,
+          itemName: options.itemName,
+          locationLabel: options.locationLabel,
+          alertMessage: options.alertMessage,
+        })
+      : '';
+    const extraPing = holdCurrent
+      ? `<span class="${pingClass} qv-map-live__ping--delay2"></span>`
+      : '';
+    const html = `<span class="qv-map-live${holdCurrent ? ' qv-map-live--hold' : ''}">${callout}${core}<span class="${pingClass}"></span><span class="${pingClass} qv-map-live__ping--delay"></span>${extraPing}</span>`;
     return L.divIcon({
-      className: 'qv-map-live-icon',
+      className: `qv-map-live-icon${holdCurrent ? ' qv-map-live-icon--hold' : ''}`,
       html,
       iconSize: [44, 44],
       iconAnchor: [22, 22],
@@ -619,6 +696,7 @@ export function ShipmentMap({
   const mapRef = useRef<L.Map | null>(null);
   const routesRef = useRef<L.Polyline[]>([]);
   const markersRef = useRef<L.Marker[]>([]);
+  const endpointMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const portsLayerRef = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const overlayLayersRef = useRef<L.TileLayer[]>([]);
@@ -769,6 +847,8 @@ export function ShipmentMap({
       resizeObserver?.disconnect();
       routesRef.current = [];
       markersRef.current = [];
+      endpointMarkersRef.current.forEach((marker) => marker.remove());
+      endpointMarkersRef.current.clear();
       portsLayerRef.current = null;
       tileLayerRef.current = null;
       overlayLayersRef.current = [];
@@ -824,6 +904,54 @@ export function ShipmentMap({
     const pendingDrawIds = new Set<string>();
     const routeById = new Map<string, L.Polyline>();
     const seenCurrentIds = new Set<string>();
+    const nextEndpointKeys = new Set<string>();
+
+    const upsertEndpointMarker = (
+      shipmentId: string,
+      trackingNumber: string,
+      lat: number,
+      lng: number,
+      kind: 'origin' | 'destination',
+      label: string
+    ) => {
+      const key = `${shipmentId}:${kind}`;
+      nextEndpointKeys.add(key);
+      const role = kind === 'origin' ? 'Sender' : 'Receiver';
+      const popupHtml = `<div style="font:12px/1.4 system-ui,sans-serif;color:#0B1020">
+              <strong>${escapeHtml(trackingNumber)}</strong><br/>${escapeHtml(label)}<br/>${role}
+            </div>`;
+      const existing = endpointMarkersRef.current.get(key);
+      if (existing) {
+        const current = existing.getLatLng();
+        if (coordsDiffer([current.lat, current.lng], [lat, lng])) {
+          existing.setLatLng([lat, lng]);
+        }
+        existing.setPopupContent(popupHtml);
+        const wantSelected = shipmentId === selectedId;
+        const alreadySelected = Boolean(existing.getElement()?.querySelector('.qv-map-endpoint--selected'));
+        if (alreadySelected !== wantSelected) {
+          existing.setIcon(createEndpointIcon(kind, wantSelected));
+        }
+        bounds.extend([lat, lng]);
+        return;
+      }
+
+      const marker = L.marker([lat, lng], {
+        icon: createEndpointIcon(kind, shipmentId === selectedId),
+        keyboard: false,
+        zIndexOffset: 350,
+      })
+        .bindPopup(popupHtml)
+        .bindTooltip(role, { direction: 'top', offset: [0, -36], opacity: 0.95 })
+        .addTo(map);
+
+      if (onSelect) {
+        marker.on('click', () => onSelect(shipmentId));
+      }
+
+      endpointMarkersRef.current.set(key, marker);
+      bounds.extend([lat, lng]);
+    };
 
     const flowId =
       selectedId && geoShipments.some((s) => s.id === selectedId)
@@ -906,6 +1034,10 @@ export function ShipmentMap({
 
         const pinStatus = (stopStatus?.trim() || (kind === 'current' ? s.status : '')).trim();
         const isOnHold = kind === 'current' && (pinStatus === 'On Hold' || s.status === 'On Hold');
+        const holdMessage =
+          stopMessage?.trim() ||
+          s.alertMessage?.trim() ||
+          (isOnHold ? 'Action required — transit paused' : '');
         const statusLine =
           isOnHold && kind === 'current'
             ? '<span style="color:#DC2626;font-weight:700">On Hold — action required</span>'
@@ -919,10 +1051,16 @@ export function ShipmentMap({
             ? `<br/>${escapeHtml(stopMessage.trim())}`
             : '';
         const marker = L.marker([startLat, startLng], {
-          icon: createMarkerIcon(kind, s.id === selectedId, isOnHold),
+          icon: createMarkerIcon(kind, s.id === selectedId, {
+            onHold: isOnHold,
+            trackingNumber: s.trackingNumber,
+            itemName: s.itemName,
+            locationLabel: s.currentAddress?.trim() || label,
+            alertMessage: isOnHold ? holdMessage : undefined,
+          }),
           keyboard: false,
           zIndexOffset:
-            kind === 'current' && isOnHold ? 600 : kind === 'current' ? 400 : kind === 'history' ? 200 : 0,
+            kind === 'current' && isOnHold ? 800 : kind === 'current' ? 400 : kind === 'history' ? 200 : 0,
         })
           .bindPopup(
             `<div style="font:12px/1.4 system-ui,sans-serif;color:#0B1020">
@@ -943,9 +1081,18 @@ export function ShipmentMap({
         bounds.extend([lat, lng]);
       };
 
+      const origin = resolveOriginCoord(s);
+      const destination = resolveDestinationCoord(s);
       const pair = latestStopPair(s);
       pair.forEach((stop, index) => {
         const isLatest = index === pair.length - 1;
+        if (
+          !isLatest &&
+          ((origin && coordsClose(stop.lat, stop.lng, origin[0], origin[1])) ||
+            (destination && coordsClose(stop.lat, stop.lng, destination[0], destination[1])))
+        ) {
+          return;
+        }
         addMarker(
           stop.lat,
           stop.lng,
@@ -961,11 +1108,43 @@ export function ShipmentMap({
           prevCurrentPositionsRef.current.set(s.id, [stop.lat, stop.lng]);
         }
       });
+
+      const showEndpoints =
+        geoShipments.length === 1 || selectedId == null || s.id === selectedId;
+      if (showEndpoints) {
+        if (origin) {
+          upsertEndpointMarker(
+            s.id,
+            s.trackingNumber,
+            origin[0],
+            origin[1],
+            'origin',
+            s.origin?.trim() ? `Sender — ${s.origin.trim()}` : 'Sender address'
+          );
+        }
+        if (destination) {
+          upsertEndpointMarker(
+            s.id,
+            s.trackingNumber,
+            destination[0],
+            destination[1],
+            'destination',
+            s.destination?.trim() ? `Receiver — ${s.destination.trim()}` : 'Receiver address'
+          );
+        }
+      }
     }
 
     // Drop stale position memory for shipments no longer on the map.
     for (const id of prevCurrentPositionsRef.current.keys()) {
       if (!seenCurrentIds.has(id)) prevCurrentPositionsRef.current.delete(id);
+    }
+
+    for (const [key, marker] of endpointMarkersRef.current) {
+      if (!nextEndpointKeys.has(key)) {
+        marker.remove();
+        endpointMarkersRef.current.delete(key);
+      }
     }
 
     if (showPorts) {
@@ -988,7 +1167,9 @@ export function ShipmentMap({
     const fitKey = `${selectedId ?? 'all'}:${geoShipments
       .map((s) => {
         const cur = resolveDisplayPosition(s);
-        return `${s.id}:${s.progress}:${cur?.[0] ?? ''}:${cur?.[1] ?? ''}:${s.currentAddress ?? ''}:${(s.positions ?? []).length}:${(s.stops ?? [])
+        const origin = resolveOriginCoord(s);
+        const destination = resolveDestinationCoord(s);
+        return `${s.id}:${s.progress}:${cur?.[0] ?? ''}:${cur?.[1] ?? ''}:${origin?.[0] ?? ''}:${origin?.[1] ?? ''}:${destination?.[0] ?? ''}:${destination?.[1] ?? ''}:${s.currentAddress ?? ''}:${(s.positions ?? []).length}:${(s.stops ?? [])
           .map((stop) => `${stop.label}:${stop.lat ?? ''}:${stop.lng ?? ''}`)
           .join(',')}`;
       })
@@ -1006,6 +1187,10 @@ export function ShipmentMap({
         const extend = (lat: number, lng: number) => {
           selectedBounds.extend([lat, lng]);
         };
+        const origin = resolveOriginCoord(selected);
+        const destination = resolveDestinationCoord(selected);
+        if (origin) extend(origin[0], origin[1]);
+        if (destination) extend(destination[0], destination[1]);
         const pair = latestStopPair(selected);
         if (pair.length > 0) {
           for (const stop of pair) extend(stop.lat, stop.lng);
@@ -1019,8 +1204,9 @@ export function ShipmentMap({
       }
 
       targetBounds = padTinyBounds(targetBounds);
+      const holdPadding = geoShipments.some((s) => s.status === 'On Hold');
       map.fitBounds(targetBounds, {
-        padding: [56, 56],
+        padding: holdPadding ? [108, 72] : [56, 56],
         maxZoom: maxZoomForBounds(targetBounds),
         animate: !reduceMotion,
         duration: reduceMotion ? 0 : 0.6,
@@ -1104,6 +1290,36 @@ export function ShipmentMap({
       className={`relative overflow-hidden rounded-xl border border-white/10 min-h-[16rem] ${className}`}
     >
       <div ref={containerRef} className="h-full w-full min-h-[inherit] z-0" />
+      <div
+        className="pointer-events-none absolute bottom-8 left-3 z-[500] flex flex-col gap-1.5 rounded-xl border border-white/15 bg-navy-800/90 px-2.5 py-2 text-[11px] leading-none text-text-primary shadow-lg"
+        aria-hidden="true"
+      >
+        <span className="flex items-center gap-2">
+          <span
+            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-white"
+            style={{ background: '#334155' }}
+            dangerouslySetInnerHTML={{ __html: ENDPOINT_FACTORY_SVG }}
+          />
+          Sender
+        </span>
+        <span className="flex items-center gap-2">
+          <span
+            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-white"
+            style={{ background: '#16A34A' }}
+            dangerouslySetInnerHTML={{ __html: ENDPOINT_HOUSE_SVG }}
+          />
+          Receiver
+        </span>
+        {geoShipments.some((s) => s.status === 'On Hold') ? (
+          <span className="flex items-center gap-2 text-red-300">
+            <span className="relative inline-flex h-5 w-5 items-center justify-center">
+              <span className="absolute inset-0 rounded-full bg-red-500/40 qv-map-legend-hold" />
+              <span className="relative h-2.5 w-2.5 rounded-full bg-red-500" />
+            </span>
+            On Hold
+          </span>
+        ) : null}
+      </div>
       {!mapReady && !mapError && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-navy-900/40 text-xs text-text-secondary">
           Loading map…
@@ -1124,10 +1340,52 @@ export function ShipmentMap({
           padding: 0;
           display: block;
         }
-        .qv-map-live-icon {
+        .qv-map-live-icon,
+        .qv-map-endpoint-icon {
           overflow: visible !important;
           background: none !important;
           border: none !important;
+        }
+        .qv-map-endpoint {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          width: 36px;
+          filter: drop-shadow(0 2px 6px rgba(11, 16, 32, 0.4));
+        }
+        .qv-map-endpoint__badge {
+          width: 32px;
+          height: 32px;
+          border-radius: 9999px;
+          border: 2px solid #F4F6FF;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          cursor: pointer;
+          padding: 0;
+        }
+        .qv-map-endpoint__pointer {
+          width: 0;
+          height: 0;
+          border-left: 6px solid transparent;
+          border-right: 6px solid transparent;
+          margin-top: -1px;
+        }
+        .qv-map-endpoint--origin .qv-map-endpoint__badge {
+          background: #334155;
+        }
+        .qv-map-endpoint--origin .qv-map-endpoint__pointer {
+          border-top: 8px solid #334155;
+        }
+        .qv-map-endpoint--destination .qv-map-endpoint__badge {
+          background: #16A34A;
+        }
+        .qv-map-endpoint--destination .qv-map-endpoint__pointer {
+          border-top: 8px solid #16A34A;
+        }
+        .qv-map-endpoint--selected .qv-map-endpoint__badge {
+          box-shadow: 0 0 0 3px rgba(79, 109, 245, 0.45);
         }
         .qv-map-live {
           position: relative;
@@ -1157,9 +1415,85 @@ export function ShipmentMap({
         }
         .qv-map-live__ping--hold {
           border-color: rgba(239, 68, 68, 0.95);
+          animation-duration: 1.1s;
         }
         .qv-map-live__ping--delay {
           animation-delay: 0.8s;
+        }
+        .qv-map-live__ping--delay2 {
+          animation-delay: 0.4s;
+        }
+        .qv-map-live--hold .qv-map-hold-alert {
+          position: absolute;
+          left: 50%;
+          bottom: calc(100% + 6px);
+          transform: translateX(-50%);
+          z-index: 4;
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          min-width: 148px;
+          max-width: 220px;
+          padding: 8px 10px 8px 10px;
+          border-radius: 10px;
+          background: rgba(127, 29, 29, 0.94);
+          border: 1px solid #FCA5A5;
+          color: #FEF2F2;
+          box-shadow: 0 8px 22px rgba(127, 29, 29, 0.45), 0 0 0 1px rgba(248, 113, 113, 0.4);
+          pointer-events: none;
+          animation: qv-hold-alert-glow 1.15s ease-in-out infinite;
+        }
+        .qv-map-hold-alert::after {
+          content: '';
+          position: absolute;
+          left: 50%;
+          bottom: -6px;
+          width: 10px;
+          height: 10px;
+          margin-left: -5px;
+          background: rgba(127, 29, 29, 0.94);
+          border-right: 1px solid #FCA5A5;
+          border-bottom: 1px solid #FCA5A5;
+          transform: rotate(45deg);
+        }
+        .qv-map-hold-alert__led {
+          width: 8px;
+          height: 8px;
+          margin-top: 3px;
+          flex-shrink: 0;
+          border-radius: 9999px;
+          background: #FCA5A5;
+          box-shadow: 0 0 8px 2px #EF4444;
+          animation: qv-hold-led 0.9s ease-in-out infinite;
+        }
+        .qv-map-hold-alert__body {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+        .qv-map-hold-alert__title {
+          font: 800 10px/1.2 system-ui, sans-serif;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #FECACA;
+        }
+        .qv-map-hold-alert__id {
+          font: 700 11px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+          color: #fff;
+        }
+        .qv-map-hold-alert__item,
+        .qv-map-hold-alert__loc,
+        .qv-map-hold-alert__msg {
+          font: 500 10px/1.3 system-ui, sans-serif;
+          color: #FECACA;
+          white-space: normal;
+        }
+        .qv-map-hold-alert__msg {
+          color: #FEE2E2;
+        }
+        .qv-map-legend-hold {
+          animation: qv-hold-led 0.9s ease-in-out infinite;
         }
         .qv-map-marker--origin { background: #94A3B8; }
         .qv-map-marker--destination { background: #22C55E; }
@@ -1186,6 +1520,7 @@ export function ShipmentMap({
           display: flex;
           align-items: center;
           justify-content: center;
+          animation: qv-hold-core 1s ease-in-out infinite;
         }
         .qv-map-marker__bang {
           color: #fff;
@@ -1206,6 +1541,28 @@ export function ShipmentMap({
             opacity: 0;
           }
         }
+        @keyframes qv-hold-led {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.2; transform: scale(0.72); }
+        }
+        @keyframes qv-hold-core {
+          0%, 100% {
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.55), 0 0 10px 2px rgba(239, 68, 68, 0.7);
+          }
+          50% {
+            box-shadow: 0 0 0 9px rgba(220, 38, 38, 0.12), 0 0 20px 6px rgba(239, 68, 68, 0.95);
+          }
+        }
+        @keyframes qv-hold-alert-glow {
+          0%, 100% {
+            box-shadow: 0 8px 22px rgba(127, 29, 29, 0.45), 0 0 0 1px rgba(248, 113, 113, 0.4);
+            border-color: #FCA5A5;
+          }
+          50% {
+            box-shadow: 0 8px 28px rgba(239, 68, 68, 0.7), 0 0 0 3px rgba(239, 68, 68, 0.4);
+            border-color: #FEE2E2;
+          }
+        }
         @keyframes qv-map-route-flow {
           to {
             stroke-dashoffset: calc(var(--qv-flow-cycle, 20px) * -1);
@@ -1221,6 +1578,12 @@ export function ShipmentMap({
             transform: scale(0.7);
           }
           .qv-map-route--flow {
+            animation: none;
+          }
+          .qv-map-marker--hold,
+          .qv-map-hold-alert__led,
+          .qv-map-live--hold .qv-map-hold-alert,
+          .qv-map-legend-hold {
             animation: none;
           }
         }

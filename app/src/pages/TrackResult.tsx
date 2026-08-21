@@ -55,6 +55,15 @@ const TrackResult = () => {
         currentLng: shipment.currentLng,
         currentAddress: shipment.currentAddress,
         mode: shipment.mode,
+        itemName: shipment.itemName,
+        alertMessage:
+          shipment.status === 'On Hold'
+            ? [...events].reverse().find((event) => event.status === 'On Hold' && event.message?.trim())
+                ?.message ||
+              [...events].reverse().find((event) => event.message?.trim())?.message ||
+              shipment.notes ||
+              undefined
+            : undefined,
         positions,
         stops: mapStopsFromEvents(events),
       }

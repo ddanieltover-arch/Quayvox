@@ -1,7 +1,7 @@
 # Pulse Engineering Memory System (PEMS) — Quayvox
 
 **PEMS Version:** 1.0  
-**Last Updated:** 2026-08-11  
+**Last Updated:** 2026-08-21  
 **Updated By:** Pulse Senior Full Stack Engineer  
 
 ---
@@ -18,7 +18,7 @@
 | Design system | Custom navy/cobalt tokens + shadcn/ui |
 | Primary risks | Missing env/secrets block deploy; cookie auth misconfig |
 | Open decisions | None — Neon + env admin auth locked |
-| Recent changes | Shipment `item_name` (cargo/item) on create/edit + Neon `007_shipment_item_name.sql` |
+| Recent changes | Live map: persistent sender/receiver pins; On Hold shipments show a blinking signal callout before click |
 | Next priorities | Domain DNS + Resend verify; Deploy QA |
 
 ---
@@ -111,6 +111,7 @@ Follow Pulse Engineering Framework naming and commit conventions. Branch: featur
 | 2026-08-10 | Solution detail pages | Six mode/industry pages under `/solutions/:slug` with shared catalog in `data/solutions.ts` |
 | 2026-08-11 | Neon + cookie admin auth | Replace Supabase; use existing Neon DATABASE_URL; env-based single admin |
 | 2026-08-11 | Admin-driven MapLibre live map | Real map on `/admin/map` + `/track/:id`; poll ~8s; no GPS/WebSockets yet |
+| 2026-08-21 | On Hold map signal (always visible) | Hold status, tracking, item, location, and latest event copy sit on the live pin without a click; blink respects reduced motion |
 
 ---
 
