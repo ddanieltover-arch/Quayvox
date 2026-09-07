@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowUp, MessageCircle } from 'lucide-react';
 
 declare global {
@@ -14,37 +15,17 @@ declare global {
   }
 }
 
-const isChatwayReady = () => {
-  const chatway = window.$chatway;
-  return Boolean(
-    chatway?.openChatwayWidget &&
-      (typeof chatway.isChatwayLoaded !== 'function' || chatway.isChatwayLoaded()) &&
-      document.querySelector('.chatway--container'),
-  );
-};
+const chatwayContainer = () => document.querySelector('.chatway--container');
 
-const openChatway = () => {
-  const tryOpen = () => {
-    if (!window.$chatway?.openChatwayWidget) return false;
-    // Ensure Chatway's hide--widget class is not blocking the panel
-    document.querySelector('.chatway--container')?.classList.remove('hide--widget', 'disable--widget');
-    window.$chatway.openChatwayWidget();
-    return Boolean(document.querySelector('.chatway--container'));
-  };
-
-  if (isChatwayReady() && tryOpen()) return;
-
-  const started = Date.now();
-  const timer = window.setInterval(() => {
-    if ((isChatwayReady() || window.$chatway?.openChatwayWidget) && tryOpen()) {
-      window.clearInterval(timer);
-    } else if (Date.now() - started > 10000) {
-      window.clearInterval(timer);
-    }
-  }, 200);
+const tryOpenChatway = () => {
+  if (!window.$chatway?.openChatwayWidget || !chatwayContainer()) return false;
+  chatwayContainer()?.classList.remove('hide--widget', 'disable--widget');
+  window.$chatway.openChatwayWidget();
+  return chatwayContainer()?.classList.contains('widget--open') ?? true;
 };
 
 const FloatingActions = () => {
+  const navigate = useNavigate();
   const [showTop, setShowTop] = useState(false);
 
   useEffect(() => {
@@ -57,6 +38,23 @@ const FloatingActions = () => {
   const scrollToTop = () => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+  };
+
+  const openChat = () => {
+    if (tryOpenChatway()) return;
+
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      if (tryOpenChatway()) {
+        window.clearInterval(timer);
+        return;
+      }
+      // Chatway account is still blocked/onboarding — don't leave a dead control
+      if (Date.now() - started > 1500) {
+        window.clearInterval(timer);
+        navigate('/contact');
+      }
+    }, 200);
   };
 
   const fabClass =
@@ -75,12 +73,7 @@ const FloatingActions = () => {
       >
         <ArrowUp className="h-5 w-5" strokeWidth={2.25} />
       </button>
-      <button
-        type="button"
-        onClick={openChatway}
-        className={fabClass}
-        aria-label="Open live chat"
-      >
+      <button type="button" onClick={openChat} className={fabClass} aria-label="Open live chat">
         <MessageCircle className="h-5 w-5" strokeWidth={2.25} />
       </button>
     </div>
