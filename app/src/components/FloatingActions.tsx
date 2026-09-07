@@ -14,20 +14,31 @@ declare global {
   }
 }
 
-const openChatway = () => {
+const isChatwayReady = () => {
   const chatway = window.$chatway;
-  if (chatway?.isChatwayLoaded?.() && chatway.openChatwayWidget) {
-    chatway.openChatwayWidget();
-    return;
-  }
-  // Widget still loading — retry briefly
+  return Boolean(
+    chatway?.openChatwayWidget &&
+      (typeof chatway.isChatwayLoaded !== 'function' || chatway.isChatwayLoaded()) &&
+      document.querySelector('.chatway--container'),
+  );
+};
+
+const openChatway = () => {
+  const tryOpen = () => {
+    if (!window.$chatway?.openChatwayWidget) return false;
+    // Ensure Chatway's hide--widget class is not blocking the panel
+    document.querySelector('.chatway--container')?.classList.remove('hide--widget', 'disable--widget');
+    window.$chatway.openChatwayWidget();
+    return Boolean(document.querySelector('.chatway--container'));
+  };
+
+  if (isChatwayReady() && tryOpen()) return;
+
   const started = Date.now();
   const timer = window.setInterval(() => {
-    const cw = window.$chatway;
-    if (cw?.isChatwayLoaded?.() && cw.openChatwayWidget) {
-      cw.openChatwayWidget();
+    if ((isChatwayReady() || window.$chatway?.openChatwayWidget) && tryOpen()) {
       window.clearInterval(timer);
-    } else if (Date.now() - started > 8000) {
+    } else if (Date.now() - started > 10000) {
       window.clearInterval(timer);
     }
   }, 200);
