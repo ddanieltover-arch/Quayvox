@@ -319,7 +319,8 @@ html.light .bg-black\/50 {
   color: var(--selection-fg);
 }
 
-/* Use Quayvox branded launcher instead of Chatway's default bubble */
-.chatway--container .chatway--trigger-container {
+/* Quayvox FAB replaces Chatway's default bubble once the widget loads */
+.chatway--container.has-loaded .chatway--trigger-container {
   display: none !important;
+  pointer-events: none !important;
 }

@@ -60,10 +60,10 @@ const FloatingActions = () => {
   };
 
   const fabClass =
-    'flex h-12 w-12 items-center justify-center rounded-full bg-cobalt text-[#F4F6FF] shadow-[0_10px_30px_rgba(79,109,245,0.28)] transition-all duration-300 hover:bg-cobalt-light hover:shadow-[0_14px_40px_rgba(79,109,245,0.36)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt focus-visible:ring-offset-2 focus-visible:ring-offset-navy-900';
+    'relative z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full bg-cobalt text-[#F4F6FF] shadow-[0_10px_30px_rgba(79,109,245,0.28)] transition-all duration-300 hover:bg-cobalt-light hover:shadow-[0_14px_40px_rgba(79,109,245,0.36)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt focus-visible:ring-offset-2 focus-visible:ring-offset-navy-900';
 
   return (
-    <div className="fixed bottom-5 right-4 z-40 flex flex-col items-center gap-3 sm:bottom-8 sm:right-6">
+    <div className="fixed bottom-5 right-4 z-[2147483647] flex flex-col items-center gap-3 sm:bottom-8 sm:right-6">
       <button
         type="button"
         onClick={scrollToTop}
