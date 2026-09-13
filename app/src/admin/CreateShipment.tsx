@@ -3,7 +3,12 @@ import { ArrowRight, ArrowLeft, Check, Plane, Ship, Train, Truck } from 'lucide-
 import { useShipments } from '@/context/ShipmentContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { QUAYVOX_CARRIER } from '@/lib/shipmentConstants';
+import {
+  COST_CURRENCIES,
+  DEFAULT_COST_CURRENCY,
+  formatShipmentCost,
+  QUAYVOX_CARRIER,
+} from '@/lib/shipmentConstants';
 
 const steps = ['Sender & Receiver', 'Freight & Schedule', 'Review'];
 
@@ -48,6 +53,8 @@ const CreateShipment = () => {
     paymentMethod: '',
     description: '',
     itemName: '',
+    cost: '',
+    costCurrency: DEFAULT_COST_CURRENCY,
     mode: 'Ocean' as 'Air' | 'Ocean' | 'Rail' | 'Road',
     priority: 'Standard' as 'Express' | 'Standard' | 'Economy',
     tags: '',
@@ -92,6 +99,13 @@ const CreateShipment = () => {
         toast.error('Fill all required item and freight fields');
         return false;
       }
+      if (form.cost.trim()) {
+        const cost = Number(form.cost);
+        if (!Number.isFinite(cost) || cost < 0) {
+          toast.error('Cost must be a valid non-negative number');
+          return false;
+        }
+      }
       return true;
     }
     return true;
@@ -113,6 +127,7 @@ const CreateShipment = () => {
     const departureAt = fromLocalInputValue(form.departureAt);
     const deliveryAt = fromLocalInputValue(form.deliveryAt);
     const eta = deliveryAt ? deliveryAt.slice(0, 10) : new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+    const cost = form.cost.trim() ? Number(form.cost) : 0;
 
     setSubmitting(true);
     try {
@@ -127,7 +142,8 @@ const CreateShipment = () => {
           w: Number(form.width),
           h: Number(form.height),
         },
-        cost: Math.round(Number(form.weight) * 0.3 + Math.random() * 1000),
+        cost,
+        costCurrency: form.costCurrency || DEFAULT_COST_CURRENCY,
         eta,
         progress: 0,
         mode: form.mode,
@@ -159,6 +175,10 @@ const CreateShipment = () => {
   };
 
   const modeIcons = { Air: Plane, Ocean: Ship, Rail: Train, Road: Truck };
+  const reviewCost = form.cost.trim()
+    ? formatShipmentCost(Number(form.cost), form.costCurrency)
+    : 'Not set';
+
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -312,6 +332,33 @@ const CreateShipment = () => {
                   <label className="block text-xs font-mono text-text-secondary mb-1.5">PAYMENT METHOD*</label>
                   <input className={inputClass} value={form.paymentMethod} onChange={(e) => updateField('paymentMethod', e.target.value)} placeholder="e.g., Bank Transfer, Cash" />
                 </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">COST (OPTIONAL)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className={inputClass}
+                    value={form.cost}
+                    onChange={(e) => updateField('cost', e.target.value)}
+                    placeholder="Leave blank if not set"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-text-secondary mb-1.5">CURRENCY</label>
+                  <select
+                    className={inputClass}
+                    value={form.costCurrency}
+                    onChange={(e) => updateField('costCurrency', e.target.value)}
+                  >
+                    {COST_CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code} — {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-text-secondary mt-1.5">Defaults to USD. Only used when a cost is entered.</p>
+                </div>
               </div>
             </section>
 
@@ -411,6 +458,7 @@ const CreateShipment = () => {
                 { label: 'Weight / Volume', value: `${form.weight} kg / ${form.volume}` },
                 { label: 'Dimensions (L×W×H)', value: `${form.length} × ${form.width} × ${form.height}` },
                 { label: 'Payment', value: form.paymentMethod },
+                { label: 'Cost', value: reviewCost },
                 { label: 'Item', value: form.itemName },
                 { label: 'Mode / Priority', value: `${form.mode} · ${form.priority}` },
                 { label: 'Carrier', value: DEFAULT_CARRIER },

@@ -35,6 +35,7 @@ export interface ShipmentRow {
   dim_w: number;
   dim_h: number;
   cost: number;
+  cost_currency?: string | null;
   eta: string | null;
   progress: number;
   mode: ShipmentMode;
@@ -153,6 +154,7 @@ export function mapShipmentRow(row: ShipmentRow): ShipmentWithExtras {
       h: Number(row.dim_h),
     },
     cost: Number(row.cost),
+    costCurrency: row.cost_currency ?? 'USD',
     eta: row.eta ? String(row.eta).slice(0, 10) : '',
     progress: row.progress,
     mode: row.mode,
@@ -277,7 +279,8 @@ export function toShipmentInsert(
     dim_l: data.dimensions.l,
     dim_w: data.dimensions.w,
     dim_h: data.dimensions.h,
-    cost: data.cost,
+    cost: data.cost ?? 0,
+    cost_currency: data.costCurrency ?? 'USD',
     eta: data.eta || null,
     progress: data.progress,
     mode: data.mode,
@@ -335,6 +338,7 @@ export function toShipmentUpdate(updates: Partial<ShipmentWithExtras> & { positi
     row.dim_h = updates.dimensions.h;
   }
   if (updates.cost !== undefined) row.cost = updates.cost;
+  if (updates.costCurrency !== undefined) row.cost_currency = updates.costCurrency;
   if (updates.eta !== undefined) row.eta = updates.eta || null;
   if (updates.progress !== undefined) row.progress = updates.progress;
   if (updates.mode !== undefined) row.mode = updates.mode;

@@ -3,7 +3,7 @@ import { Plane, Ship, Train, Truck, Trash2, X } from 'lucide-react';
 import { useShipments } from '@/context/ShipmentContext';
 import type { Shipment } from '@/data/mockShipments';
 import type { ShipmentWithExtras } from '@/lib/shipments';
-import { QUAYVOX_CARRIER } from '@/lib/shipmentConstants';
+import { QUAYVOX_CARRIER, COST_CURRENCIES, DEFAULT_COST_CURRENCY } from '@/lib/shipmentConstants';
 
 const statuses: Shipment['status'][] = [
   'Pending',
@@ -43,6 +43,8 @@ function formFromShipment(shipment: ShipmentWithExtras) {
     width: String(shipment.dimensions?.w ?? ''),
     height: String(shipment.dimensions?.h ?? ''),
     paymentMethod: shipment.paymentMethod || '',
+    cost: shipment.cost > 0 ? String(shipment.cost) : '',
+    costCurrency: shipment.costCurrency || DEFAULT_COST_CURRENCY,
   };
 }
 
@@ -102,6 +104,8 @@ export function ShipmentEditModal({ shipment, onClose }: ShipmentEditModalProps)
       weight: Number(form.weight) || 0,
       volume: Number(form.volume) || 0,
       paymentMethod: form.paymentMethod.trim(),
+      cost: form.cost.trim() ? Number(form.cost) : 0,
+      costCurrency: form.costCurrency || DEFAULT_COST_CURRENCY,
       dimensions: {
         l: Number(form.length) || 0,
         w: Number(form.width) || 0,
@@ -227,6 +231,32 @@ export function ShipmentEditModal({ shipment, onClose }: ShipmentEditModalProps)
               <input type="number" placeholder="Length" value={form.length} onChange={(e) => setField('length', e.target.value)} className={fieldClass} />
               <input type="number" placeholder="Width" value={form.width} onChange={(e) => setField('width', e.target.value)} className={fieldClass} />
               <input type="number" placeholder="Height" value={form.height} onChange={(e) => setField('height', e.target.value)} className={fieldClass} />
+              <div>
+                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">Cost (optional)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  placeholder="Leave blank if not set"
+                  value={form.cost}
+                  onChange={(e) => setField('cost', e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-mono uppercase text-text-secondary mb-2">Currency</label>
+                <select
+                  value={form.costCurrency}
+                  onChange={(e) => setField('costCurrency', e.target.value)}
+                  className={fieldClass}
+                >
+                  {COST_CURRENCIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code} — {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-mono uppercase text-text-secondary mb-2">Transport mode</label>

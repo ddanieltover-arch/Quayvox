@@ -17,6 +17,7 @@ import { useShipments } from '@/context/ShipmentContext';
 import type { Shipment } from '@/data/mockShipments';
 import { getStatusColor } from '@/data/mockShipments';
 import type { ShipmentWithExtras } from '@/lib/shipments';
+import { formatShipmentCost } from '@/lib/shipmentConstants';
 import { ShipmentEditModal } from '@/admin/ShipmentEditModal';
 import { ShipmentStatusUpdateModal } from '@/admin/ShipmentStatusUpdateModal';
 
@@ -243,7 +244,9 @@ const Shipments = () => {
                   <ModeIcon className="w-4 h-4" />
                   {shipment.mode}
                 </span>
-                <span className="font-mono text-text-primary">${shipment.cost.toLocaleString()}</span>
+                <span className="font-mono text-text-primary">
+                  {formatShipmentCost(shipment.cost, shipment.costCurrency)}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-1.5 bg-navy-700 rounded-full overflow-hidden">
@@ -387,7 +390,7 @@ const Shipments = () => {
                     </td>
                     <td className="py-3 px-3">
                       <span className="text-sm font-mono text-text-primary">
-                        ${shipment.cost.toLocaleString()}
+                        {formatShipmentCost(shipment.cost, shipment.costCurrency)}
                       </span>
                     </td>
                     <td className="py-3 px-3">

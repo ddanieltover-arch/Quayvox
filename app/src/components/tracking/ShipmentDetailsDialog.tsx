@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { FileText } from 'lucide-react';
 import type { ShipmentWithExtras } from '@/lib/shipments';
 import { getStatusColor } from '@/data/mockShipments';
+import { formatShipmentCost } from '@/lib/shipmentConstants';
 import {
   Dialog,
   DialogContent,
@@ -79,7 +80,7 @@ export function ShipmentDetailsDialog({ shipment }: ShipmentDetailsDialogProps) 
             <DetailRow label="Priority" value={shipment.priority} />
             <DetailRow label="Progress" value={`${shipment.progress}%`} />
             <DetailRow label="ETA" value={shipment.eta || '—'} />
-            <DetailRow label="Cost" value={shipment.cost ? `$${shipment.cost.toLocaleString()}` : '—'} />
+            <DetailRow label="Cost" value={formatShipmentCost(shipment.cost, shipment.costCurrency)} />
             <DetailRow label="Tags" value={shipment.tags?.length ? shipment.tags.join(', ') : '—'} />
           </DetailSection>
 

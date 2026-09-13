@@ -35,6 +35,7 @@ const migrations = [
   '006_unified_addresses.sql',
   '007_shipment_item_name.sql',
   '008_on_hold_status.sql',
+  '009_shipment_cost_currency.sql',
 ];
 
 await client.connect();

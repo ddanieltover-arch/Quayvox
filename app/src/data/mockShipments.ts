@@ -11,6 +11,8 @@ export interface Shipment {
   weight: number;
   dimensions: { l: number; w: number; h: number };
   cost: number;
+  /** ISO 4217 currency code for cost; defaults to USD when unset. */
+  costCurrency?: string;
   eta: string;
   progress: number;
   mode: 'Air' | 'Ocean' | 'Rail' | 'Road';

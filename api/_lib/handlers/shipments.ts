@@ -56,7 +56,14 @@ const createSchema = z.object({
   dim_l: z.number(),
   dim_w: z.number(),
   dim_h: z.number(),
-  cost: z.number(),
+  cost: z.number().nonnegative().optional().default(0),
+  cost_currency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/)
+    .optional()
+    .default('USD'),
   eta: z.string().nullable().optional(),
   progress: z.number().int().min(0).max(100),
   mode: z.enum(['Air', 'Ocean', 'Rail', 'Road']),
@@ -88,7 +95,13 @@ const patchSchema = z
     dim_l: z.number().optional(),
     dim_w: z.number().optional(),
     dim_h: z.number().optional(),
-    cost: z.number().optional(),
+    cost: z.number().nonnegative().optional(),
+    cost_currency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/)
+      .optional(),
     eta: z.string().nullable().optional(),
     progress: z.number().int().min(0).max(100).optional(),
     mode: z.enum(['Air', 'Ocean', 'Rail', 'Road']).optional(),
